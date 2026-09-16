@@ -28,7 +28,13 @@ public sealed class Microsoft365SynchronizationConfiguration : IEntityTypeConfig
             .HasForeignKey(synchronization => synchronization.Microsoft365SourceId)
             .OnDelete(DeleteBehavior.Cascade);
 
+        builder.HasOne(synchronization => synchronization.Microsoft365ReindexOperation)
+            .WithMany(operation => operation.Synchronizations)
+            .HasForeignKey(synchronization => synchronization.Microsoft365ReindexOperationId)
+            .OnDelete(DeleteBehavior.Restrict);
+
         builder.HasIndex(synchronization => new { synchronization.Microsoft365SourceId, synchronization.Status });
+        builder.HasIndex(synchronization => synchronization.Microsoft365ReindexOperationId);
         builder.HasIndex(synchronization => synchronization.Microsoft365SourceId)
             .IsUnique()
             .HasFilter($"[Status] = '{Microsoft365SynchronizationStatus.Running}'");

@@ -46,6 +46,22 @@ public sealed class Microsoft365IngestionWorker(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
+                var reindexProgressService = scope.ServiceProvider
+                    .GetRequiredService<IMicrosoft365ReindexProgressService>();
+                await reindexProgressService.RunAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Microsoft 365 reindex progress cycle failed.");
+            }
+
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
                 var aclReconciliationService = scope.ServiceProvider
                     .GetRequiredService<IMicrosoft365AclReconciliationService>();
                 await aclReconciliationService.RunAsync(stoppingToken);

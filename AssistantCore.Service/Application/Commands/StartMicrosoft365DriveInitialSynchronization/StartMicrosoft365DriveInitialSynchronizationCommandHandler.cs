@@ -14,5 +14,5 @@ public sealed class StartMicrosoft365DriveInitialSynchronizationCommandHandler(
         synchronizationService.StartInitialSynchronizationAsync(
             request.SourceId,
             request.SynchronizationId,
-            cancellationToken);
+            cancellationToken: cancellationToken);
 }

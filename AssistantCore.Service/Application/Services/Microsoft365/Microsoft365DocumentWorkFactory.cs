@@ -13,7 +13,8 @@ public sealed class Microsoft365DocumentWorkFactory : IMicrosoft365DocumentWorkF
     public Microsoft365DocumentWorkData Create(
         Microsoft365Drive drive,
         Microsoft365DriveItemDelta item,
-        DateTimeOffset createdAt)
+        DateTimeOffset createdAt,
+        Guid? reindexOperationId = null)
     {
         ArgumentNullException.ThrowIfNull(drive);
         ArgumentNullException.ThrowIfNull(item);
@@ -50,23 +51,44 @@ public sealed class Microsoft365DocumentWorkFactory : IMicrosoft365DocumentWorkF
             item.WebUrl,
             item.IsDeleted ? null : item.Size,
             item.IsDeleted ? null : item.MimeType,
-            CreateDeduplicationKey(drive.OrganizationId, canonicalDriveId, item.Id, version),
+            CreateDeduplicationKey(
+                drive.OrganizationId,
+                canonicalDriveId,
+                item.Id,
+                version,
+                reindexOperationId),
             createdAt);
     }
 
+    /// <summary>
+    /// La cle porte la reprise demandee par un operateur Synaptix lorsqu'il y en a une.
+    /// Un ancien travail termine en <c>PermanentFailure</c> sur la meme version ne bloque donc
+    /// plus la creation d'un nouveau travail, alors que deux lectures de la meme page a
+    /// l'interieur de la reprise produisent toujours la meme cle.
+    /// </summary>
     private static string CreateDeduplicationKey(
         Guid organizationId,
         string driveId,
         string itemId,
-        string version)
+        string version,
+        Guid? reindexOperationId)
     {
-        var identity = JsonSerializer.Serialize(new[]
-        {
+        List<string> segments =
+        [
             organizationId.ToString("N"),
             driveId,
             itemId,
             version
-        });
+        ];
+
+        // Hors reprise, la cle reste exactement celle des travaux deja enregistres :
+        // le segment supplementaire n'est ajoute que pour une reindexation administrative.
+        if (reindexOperationId is { } operationId)
+        {
+            segments.Add(operationId.ToString("N"));
+        }
+
+        var identity = JsonSerializer.Serialize(segments);
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(identity)));
     }
 }

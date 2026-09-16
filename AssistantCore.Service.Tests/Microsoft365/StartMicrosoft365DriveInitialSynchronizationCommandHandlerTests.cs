@@ -37,13 +37,17 @@ public sealed class StartMicrosoft365DriveInitialSynchronizationCommandHandlerTe
 
         public CancellationToken CancellationToken { get; private set; }
 
+        public Guid? ReindexOperationId { get; private set; }
+
         public Task<Microsoft365DriveInitialSynchronizationResult> StartInitialSynchronizationAsync(
             Guid sourceId,
             Guid synchronizationId,
+            Guid? reindexOperationId = null,
             CancellationToken cancellationToken = default)
         {
             SourceId = sourceId;
             SynchronizationId = synchronizationId;
+            ReindexOperationId = reindexOperationId;
             CancellationToken = cancellationToken;
             return Task.FromResult(result);
         }

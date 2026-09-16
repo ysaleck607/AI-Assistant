@@ -9,4 +9,5 @@ public sealed record Microsoft365PendingSynchronization(
     Microsoft365SourceKind SourceKind,
     Microsoft365SourceStatus SourceStatus,
     bool IsIndexed,
-    Microsoft365SynchronizationType Type);
+    Microsoft365SynchronizationType Type,
+    Guid? ReindexOperationId = null);

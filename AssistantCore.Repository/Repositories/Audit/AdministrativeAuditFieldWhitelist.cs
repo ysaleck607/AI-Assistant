@@ -19,6 +19,10 @@ public static class AdministrativeAuditFieldWhitelist
             [AdministrativeAuditAction.UserAccessReevaluated] = new HashSet<string>
             {
                 "accessAllowed", "diagnosticCode"
+            },
+            [AdministrativeAuditAction.Microsoft365ReindexRequested] = new HashSet<string>
+            {
+                "operationId", "libraryCount", "reason"
             }
         };
 

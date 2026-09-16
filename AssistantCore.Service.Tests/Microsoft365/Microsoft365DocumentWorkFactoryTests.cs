@@ -126,6 +126,99 @@ public sealed class Microsoft365DocumentWorkFactoryTests
     }
 
     [Theory, AutoDomainData]
+    public void Given_ADocumentAlreadyProcessedOutsideAReindex_When_Create_Then_UsesANewKeyForTheReindex(
+        Guid organizationId,
+        Guid sourceId,
+        Guid reindexOperationId,
+        string itemId,
+        string eTag,
+        DateTimeOffset createdAt)
+    {
+        // Given
+        var drive = CreateDrive(organizationId, sourceId);
+        var item = CreateItem(itemId, "report.pdf", eTag, isDeleted: false);
+        var factory = new Microsoft365DocumentWorkFactory();
+
+        // When
+        var previousWork = factory.Create(drive, item, createdAt);
+        var reindexedWork = factory.Create(drive, item, createdAt.AddMinutes(1), reindexOperationId);
+
+        // Then
+        Assert.NotEqual(previousWork.DeduplicationKey, reindexedWork.DeduplicationKey);
+    }
+
+    [Theory, AutoDomainData]
+    public void Given_TheSameDocumentTwiceInOneReindex_When_Create_Then_UsesTheSameKey(
+        Guid organizationId,
+        Guid sourceId,
+        Guid reindexOperationId,
+        string itemId,
+        string eTag,
+        DateTimeOffset createdAt)
+    {
+        // Given
+        var drive = CreateDrive(organizationId, sourceId);
+        var item = CreateItem(itemId, "report.pdf", eTag, isDeleted: false);
+        var factory = new Microsoft365DocumentWorkFactory();
+
+        // When
+        var firstWork = factory.Create(drive, item, createdAt, reindexOperationId);
+        var replayedWork = factory.Create(drive, item, createdAt.AddMinutes(1), reindexOperationId);
+
+        // Then
+        Assert.Equal(firstWork.DeduplicationKey, replayedWork.DeduplicationKey);
+    }
+
+    [Theory, AutoDomainData]
+    public void Given_TwoDifferentReindexOperations_When_Create_Then_UsesADifferentKeyPerOperation(
+        Guid organizationId,
+        Guid sourceId,
+        Guid firstOperationId,
+        Guid secondOperationId,
+        string itemId,
+        string eTag,
+        DateTimeOffset createdAt)
+    {
+        // Given
+        var drive = CreateDrive(organizationId, sourceId);
+        var item = CreateItem(itemId, "report.pdf", eTag, isDeleted: false);
+        var factory = new Microsoft365DocumentWorkFactory();
+
+        // When
+        var firstWork = factory.Create(drive, item, createdAt, firstOperationId);
+        var secondWork = factory.Create(drive, item, createdAt, secondOperationId);
+
+        // Then
+        Assert.NotEqual(firstWork.DeduplicationKey, secondWork.DeduplicationKey);
+    }
+
+    [Theory, AutoDomainData]
+    public void Given_NoReindexOperation_When_Create_Then_KeepsTheHistoricalKeyFormat(
+        Guid organizationId,
+        Guid sourceId,
+        string itemId,
+        string eTag,
+        DateTimeOffset createdAt)
+    {
+        // Given
+        var drive = CreateDrive(organizationId, sourceId);
+        var item = CreateItem(itemId, "report.pdf", eTag, isDeleted: false);
+        var factory = new Microsoft365DocumentWorkFactory();
+
+        // When
+        var work = factory.Create(drive, item, createdAt, reindexOperationId: null);
+
+        // Then
+        Assert.Equal(
+            CreateExpectedDeduplicationKey(
+                organizationId,
+                drive.DriveId,
+                itemId,
+                Microsoft365DocumentIndexVersion.Create(eTag)),
+            work.DeduplicationKey);
+    }
+
+    [Theory, AutoDomainData]
     public void Given_ADeletedItem_When_Create_Then_CreatesDeleteWorkWithoutDocumentPayload(
         Guid organizationId,
         Guid sourceId,

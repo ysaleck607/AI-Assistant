@@ -8,5 +8,6 @@ public enum AdministrativeAuditAction
     ConversationArchived,
     ConversationDeleted,
     ConnectorStatusChanged,
-    UserAccessReevaluated
+    UserAccessReevaluated,
+    Microsoft365ReindexRequested
 }

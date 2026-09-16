@@ -125,6 +125,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365SiteDiscoveryService, Microsoft365SiteDiscoveryService>();
         services.AddScoped<IMicrosoft365SiteSelectionService, Microsoft365SiteSelectionService>();
         services.AddScoped<IMicrosoft365DriveAdministrationService, Microsoft365DriveAdministrationService>();
+        services.AddScoped<IMicrosoft365ReindexService, Microsoft365ReindexService>();
+        services.AddScoped<IMicrosoft365ReindexStatusService, Microsoft365ReindexStatusService>();
         services.AddScoped<IMicrosoft365CurrentUserOneDriveIndexingService, Microsoft365CurrentUserOneDriveIndexingService>();
 
         return services;
@@ -154,6 +156,8 @@ public static class ServiceCollectionExtensions
             IMicrosoft365PendingSynchronizationService,
             Microsoft365PendingSynchronizationService>();
         services.AddScoped<IMicrosoft365IndexCleanupService, Microsoft365IndexCleanupService>();
+        services.AddScoped<IMicrosoft365ReindexIndexSweeper, Microsoft365ReindexIndexSweeper>();
+        services.AddScoped<IMicrosoft365ReindexProgressService, Microsoft365ReindexProgressService>();
         services.AddScoped<
             IMicrosoft365ContentAclSynchronizationService,
             Microsoft365ContentAclSynchronizationService>();

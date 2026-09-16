@@ -545,6 +545,134 @@
       ]
     },
     {
+      "name": "Backoffice Microsoft 365",
+      "item": [
+        {
+          "name": "Relancer l'indexation SharePoint",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const organizationId = pm.environment.get('backoffice_organization_id');",
+                  "if (!organizationId || organizationId.startsWith('YOUR_')) {",
+                  "    throw new Error('backoffice_organization_id must contain the client organization identifier.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 202', function () {",
+                  "    pm.response.to.have.status(202);",
+                  "});",
+                  "pm.test('Returns a pending operation', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.status).to.eql('Pending');",
+                  "    pm.expect(body.libraryCount).to.be.above(0);",
+                  "    pm.environment.set('reindex_operation_id', body.operationId);",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Reprise apres correction du connecteur\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "url": {
+              "raw": "{{base_url}}/api/backoffice/organizations/{{backoffice_organization_id}}/microsoft365/reindex",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "backoffice",
+                "organizations",
+                "{{backoffice_organization_id}}",
+                "microsoft365",
+                "reindex"
+              ]
+            },
+            "description": "Relance l'indexation complete des bibliotheques SharePoint activees du client. Reserve aux operateurs Synaptix (politique ManagementAdmin) : un administrateur du client recoit 403. Retourne 409 lorsqu'une reprise est deja en cours pour cette organisation. Le motif est facultatif."
+          },
+          "response": []
+        },
+        {
+          "name": "Suivre une reindexation SharePoint",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const operationId = pm.environment.get('reindex_operation_id');",
+                  "if (!operationId || operationId.startsWith('YOUR_')) {",
+                  "    throw new Error('reindex_operation_id is set by the reindex request.');",
+                  "}"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status code is 200', function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "pm.test('Reports progress without document content', function () {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body).to.have.property('completedLibraryCount');",
+                  "    pm.expect(body).to.have.property('discoveredDocumentCount');",
+                  "    pm.expect(body).to.have.property('requestedAt');",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/backoffice/organizations/{{backoffice_organization_id}}/microsoft365/reindex/{{reindex_operation_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "backoffice",
+                "organizations",
+                "{{backoffice_organization_id}}",
+                "microsoft365",
+                "reindex",
+                "{{reindex_operation_id}}"
+              ]
+            },
+            "description": "Lit l'etat, les compteurs et les dates de la reprise. La reponse ne contient aucun contenu documentaire."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
       "name": "Conversations",
       "item": [
         {

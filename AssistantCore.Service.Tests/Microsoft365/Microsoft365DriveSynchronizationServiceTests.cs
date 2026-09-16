@@ -38,7 +38,7 @@ public sealed class Microsoft365DriveSynchronizationServiceTests
         var result = await service.StartInitialSynchronizationAsync(
             sourceId,
             synchronizationId,
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         // Then
         Assert.Equal(Microsoft365DriveInitialSynchronizationStatus.Completed, result.Status);
@@ -80,7 +80,7 @@ public sealed class Microsoft365DriveSynchronizationServiceTests
         var result = await service.StartInitialSynchronizationAsync(
             sourceId,
             synchronizationId,
-            CancellationToken.None);
+            cancellationToken: CancellationToken.None);
 
         // Then
         Assert.Equal(Microsoft365DriveInitialSynchronizationStatus.AlreadyInProgress, result.Status);

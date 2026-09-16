@@ -60,6 +60,7 @@ public sealed class Microsoft365PendingSynchronizationRepository(AssistantCoreDb
             synchronization.Microsoft365Source.Kind,
             synchronization.Microsoft365Source.Status,
             synchronization.Microsoft365Source.IsIndexed,
-            synchronization.Type);
+            synchronization.Type,
+            synchronization.Microsoft365ReindexOperationId);
     }
 }

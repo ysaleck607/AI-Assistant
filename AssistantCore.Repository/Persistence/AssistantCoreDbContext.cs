@@ -45,6 +45,9 @@ public class AssistantCoreDbContext(
 
     public DbSet<Microsoft365Synchronization> Microsoft365Synchronizations => Set<Microsoft365Synchronization>();
 
+    public DbSet<Microsoft365ReindexOperation> Microsoft365ReindexOperations =>
+        Set<Microsoft365ReindexOperation>();
+
     public DbSet<Microsoft365ListItemWork> Microsoft365ListItemWorks => Set<Microsoft365ListItemWork>();
 
     public DbSet<Microsoft365DocumentWork> Microsoft365DocumentWorks => Set<Microsoft365DocumentWork>();

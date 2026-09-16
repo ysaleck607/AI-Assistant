@@ -1209,6 +1209,13 @@ résolution des permissions, découpage, embeddings et écriture dans Azure AI
 Search. Les permissions sont donc recalculées à partir de l’état courant dans
 SharePoint. Un document ne devient jamais visible grâce à une ancienne ACL.
 
+Le pipeline garde son contrôle de version : un document déjà indexé dans sa
+version courante et toujours disponible n’est pas téléchargé de nouveau et ne
+consomme aucun embedding. La reprise concentre donc son travail sur les
+documents absents de l’index, notamment ceux dont un ancien travail avait
+échoué. Les changements de permissions sur un document inchangé restent traités
+par la réconciliation planifiée des ACL.
+
 La réindexation n’efface pas l’index au démarrage. Les passages valides restent
 disponibles jusqu’au remplacement réussi de leur document. À la fin du
 parcours, les contenus qui n’existent plus dans SharePoint sont retirés. Le

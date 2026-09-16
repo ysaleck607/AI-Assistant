@@ -56,8 +56,13 @@ internal sealed class DomainCustomization : ICustomization
             .Without(list => list.Synchronizations));
         fixture.Customize<Microsoft365Subscription>(composer =>
             composer.Without(subscription => subscription.Microsoft365Source));
-        fixture.Customize<Microsoft365Synchronization>(composer =>
-            composer.Without(synchronization => synchronization.Microsoft365Source));
+        fixture.Customize<Microsoft365Synchronization>(composer => composer
+            .Without(synchronization => synchronization.Microsoft365Source)
+            .Without(synchronization => synchronization.Microsoft365ReindexOperation));
+        fixture.Customize<Microsoft365ReindexOperation>(composer => composer
+            .Without(operation => operation.Organization)
+            .Without(operation => operation.Microsoft365Connection)
+            .Without(operation => operation.Synchronizations));
         fixture.Customize<Microsoft365ListItemWork>(composer => composer
             .Without(work => work.Organization)
             .Without(work => work.Microsoft365Source)

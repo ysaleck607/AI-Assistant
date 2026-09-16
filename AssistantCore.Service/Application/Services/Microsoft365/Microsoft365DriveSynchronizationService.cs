@@ -26,6 +26,7 @@ public sealed class Microsoft365DriveSynchronizationService(
     public async Task<Microsoft365DriveInitialSynchronizationResult> StartInitialSynchronizationAsync(
         Guid sourceId,
         Guid synchronizationId,
+        Guid? reindexOperationId = null,
         CancellationToken cancellationToken = default)
     {
         var lease = await PrepareLeaseAsync(sourceId, cancellationToken);
@@ -51,6 +52,7 @@ public sealed class Microsoft365DriveSynchronizationService(
                 var synchronization = await SynchronizeItemsAsync(
                     lease,
                     synchronizationId,
+                    reindexOperationId,
                     deltaClient.GetInitialPagesAsync(
                         lease.Drive.Microsoft365Connection.TenantId!,
                         lease.Drive.DriveId,
@@ -99,6 +101,7 @@ public sealed class Microsoft365DriveSynchronizationService(
                     synchronization = await SynchronizeItemsAsync(
                         lease,
                         synchronizationId,
+                        reindexOperationId: null,
                         deltaClient.GetInitialPagesAsync(
                             lease.Drive.Microsoft365Connection.TenantId!,
                             lease.Drive.DriveId,
@@ -118,6 +121,7 @@ public sealed class Microsoft365DriveSynchronizationService(
                         synchronization = await SynchronizeItemsAsync(
                             lease,
                             synchronizationId,
+                            reindexOperationId: null,
                             deltaClient.GetDeltaPagesAsync(
                                 lease.Drive.Microsoft365Connection.TenantId!,
                                 lease.Drive.DeltaLink,
@@ -134,6 +138,7 @@ public sealed class Microsoft365DriveSynchronizationService(
                         synchronization = await SynchronizeItemsAsync(
                             lease,
                             synchronizationId,
+                            reindexOperationId: null,
                             deltaClient.GetInitialPagesAsync(
                                 lease.Drive.Microsoft365Connection.TenantId!,
                                 lease.Drive.DriveId,
@@ -157,6 +162,7 @@ public sealed class Microsoft365DriveSynchronizationService(
     private async Task<ItemSynchronizationResult> SynchronizeItemsAsync(
         SynchronizationLease lease,
         Guid synchronizationId,
+        Guid? reindexOperationId,
         IAsyncEnumerable<Microsoft365DriveItemDeltaPage> pages,
         CancellationToken cancellationToken)
     {
@@ -177,7 +183,7 @@ public sealed class Microsoft365DriveSynchronizationService(
             {
                 if (item.IsDeleted)
                 {
-                    works.Add(workFactory.Create(lease.Drive, item, pageCreatedAt));
+                    works.Add(workFactory.Create(lease.Drive, item, pageCreatedAt, reindexOperationId));
                     deleteWorkCount++;
                 }
                 else if (item.IsFolder)
@@ -188,7 +194,7 @@ public sealed class Microsoft365DriveSynchronizationService(
                          && item.Name is not null
                          && supportPolicy.IsSupported(item.Name, item.MimeType))
                 {
-                    works.Add(workFactory.Create(lease.Drive, item, pageCreatedAt));
+                    works.Add(workFactory.Create(lease.Drive, item, pageCreatedAt, reindexOperationId));
                     processWorkCount++;
                     if (IsCreated(item))
                     {
