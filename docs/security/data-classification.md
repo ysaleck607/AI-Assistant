@@ -146,7 +146,7 @@ déjà calculées.
 | --- | --- |
 | AdministrativeAuditEntry | `Id`, `OrganizationId`, `ActorType`, `ActorId`, `Action`, `TargetType`, `TargetId`, `OccurredAt`, `CorrelationId` |
 | Conversation | `Id`, `OrganizationId`, `OwnerMemberId`, `Status`, `Version`, `CreatedAt`, `UpdatedAt`, `DeletedAt`, `ContextSummaryUpdatedAt` |
-| ConversationPurgeRequest | toutes : `Id`, `ConversationId`, `OrganizationId`, `RequestedAt`, `PurgeAfter`, `Status` |
+| ConversationPurgeRequest | toutes : `Id`, `ConversationId`, `OrganizationId`, `RequestedAt`, `PurgeAfter`, `Status`, `Step`, `LeaseId`, `LeaseExpiresAt`, `AttemptCount`, `NextAttemptAt`, `LastErrorCode`, `CompletedAt`, `DeletedMessageCount`, `DeletedSourceCount` |
 | Message | `Id`, `ConversationId`, `Role`, `ProcessingStatus`, `Model`, `ProcessingErrorCode`, `CreatedAt`, `UpdatedAt` |
 | MessageSource | `Id`, `MessageId`, `SourceType`, `SourceDate` |
 | MessageWarning | `Id`, `MessageId` |

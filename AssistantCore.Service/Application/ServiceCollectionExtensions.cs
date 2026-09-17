@@ -2,6 +2,7 @@ using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Backoffice;
 using AssistantCore.Service.Application.Services.AuthenticateUser;
 using AssistantCore.Service.Application.Services.Conversations;
+using AssistantCore.Service.Application.Services.Conversations.Purge;
 using AssistantCore.Service.Application.Services.Conversations.Audit;
 using AssistantCore.Service.Application.Services.Conversations.Pagination;
 using AssistantCore.Service.Application.Services.Members;
@@ -62,6 +63,12 @@ public static class ServiceCollectionExtensions
                 options => options.MaximumTitleLength is > 0 and <= MaximumPersistedTitleLength,
                 $"{ConversationOptions.SectionName}:{nameof(ConversationOptions.MaximumTitleLength)} must be between 1 and {MaximumPersistedTitleLength}.")
             .ValidateOnStart();
+        services.AddOptions<ConversationPurgeOptions>()
+            .Bind(configuration.GetSection(ConversationPurgeOptions.SectionName))
+            .Validate(
+                options => options.IsValid(),
+                $"{ConversationPurgeOptions.SectionName} requires positive lease, polling, attempt and backoff values.")
+            .ValidateOnStart();
         services.AddOptions<RetentionOptions>()
             .Bind(configuration.GetSection(RetentionOptions.SectionName))
             .Validate(
@@ -82,6 +89,7 @@ public static class ServiceCollectionExtensions
                 $"{UsageOptions.SectionName}:{nameof(UsageOptions.DefaultMonthlyTokenLimit)} must be greater than zero.")
             .ValidateOnStart();
         services.AddScoped<IUsageTrackingService, UsageTrackingService>();
+        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
         services.AddScoped<ISendMessageCommandValidator, SendMessageCommandValidator>();
         services.AddSingleton<IConversationCursorCodec, ConversationCursorCodec>();
         services.AddSingleton<IConversationMessageCursorCodec, ConversationMessageCursorCodec>();

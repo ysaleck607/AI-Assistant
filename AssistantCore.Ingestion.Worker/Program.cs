@@ -46,6 +46,7 @@ public static class WorkerProgram
         builder.Services.AddPersistenceEncryption();
         builder.Services.AddPersistence(builder.Configuration);
         builder.Services.AddHostedService<Microsoft365IngestionWorker>();
+        builder.Services.AddHostedService<ConversationPurgeWorker>();
 
         await builder.Build().RunAsync();
     }
