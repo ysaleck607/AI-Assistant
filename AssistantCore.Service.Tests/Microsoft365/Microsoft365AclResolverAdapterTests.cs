@@ -479,6 +479,44 @@ public sealed class Microsoft365AclResolverAdapterTests
         Assert.Contains(nameof(Microsoft365AclResolutionFailureReason.UnknownPrincipal), loggedContent);
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_AnUnredeemedGuestInvitation_When_ResolveAsync_Then_GrantsNoAccessWithoutLoggingTheEmail(
+        Guid organizationId)
+    {
+        // Given
+        // A share sent to an email address that has not yet accepted the guest invitation has
+        // no Entra Object ID yet - Graph represents this as a "user" identity with a display
+        // name/email but no id. It must never be silently treated as a valid, matchable
+        // principal, and the email must never reach a log line.
+        const string invitedEmail = "invited-guest@external.example";
+        var logger = new CapturingLogger();
+        using var identityHttpClient = CreateTokenHttpClient();
+        using var graphHttpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            CreateJsonResponse($$$"""
+                {"value":[{
+                  "id":"permission-1",
+                  "roles":["read"],
+                  "grantedToIdentitiesV2":[
+                    {"user":{"displayName":"{{{invitedEmail}}}"}}
+                  ]
+                }]}
+                """)));
+        using var sharePointHttpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            CreateJsonResponse("{}")));
+        var adapter = CreateAdapter(identityHttpClient, graphHttpClient, sharePointHttpClient, logger);
+
+        // When
+        var result = await adapter.ResolveAsync(
+            CreateOrganization(organizationId),
+            CreateDriveItemReference(),
+            CancellationToken.None);
+
+        // Then
+        var unresolved = Assert.IsType<Microsoft365AclResolution.Unresolved>(result);
+        Assert.Equal(Microsoft365AclResolutionFailureReason.UnknownPrincipal, unresolved.Reason);
+        Assert.DoesNotContain(invitedEmail, string.Join(" ", logger.Messages), StringComparison.Ordinal);
+    }
+
     private static Microsoft365AclResolverAdapter CreateAdapter(
         HttpClient identityHttpClient,
         HttpClient graphHttpClient,
