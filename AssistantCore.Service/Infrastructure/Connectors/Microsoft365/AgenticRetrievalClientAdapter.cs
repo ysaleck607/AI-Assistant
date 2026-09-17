@@ -75,7 +75,8 @@ public sealed class AgenticRetrievalClientAdapter(
                 reference.DriveItemId,
                 reference.Url,
                 reference.ModifiedAt,
-                reference.RelevanceScore)).ToArray(),
+                reference.RelevanceScore,
+                reference.ArchivePath)).ToArray(),
             result.Activity.Select(activity => new AgenticRetrievalActivity(
                 activity.Type,
                 activity.KnowledgeSourceName,

@@ -12,4 +12,5 @@ public sealed record Microsoft365SearchPassage(
     string? Url = null,
     DateTimeOffset? ModifiedAt = null,
     IReadOnlyList<float>? ContentVector = null,
-    string SourceType = "sharepoint");
+    string SourceType = "sharepoint",
+    string? ArchivePath = null);

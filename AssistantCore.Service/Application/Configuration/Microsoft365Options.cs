@@ -64,6 +64,18 @@ public sealed class Microsoft365Options
 
     public int MaximumPdfPages { get; init; } = 500;
 
+    public long MaximumArchiveCompressedSizeBytes { get; init; } = 50 * 1024 * 1024;
+
+    public long MaximumArchiveExpandedSizeBytes { get; init; } = 200 * 1024 * 1024;
+
+    public int MaximumArchiveEntries { get; init; } = 1000;
+
+    public int MaximumArchiveDepth { get; init; } = 2;
+
+    public double MaximumArchiveCompressionRatio { get; init; } = 100d;
+
+    public int ArchiveExtractionTimeoutSeconds { get; init; } = 60;
+
     public int MaximumExcelSheets { get; init; } = 100;
 
     public int MaximumExcelCells { get; init; } = 100_000;

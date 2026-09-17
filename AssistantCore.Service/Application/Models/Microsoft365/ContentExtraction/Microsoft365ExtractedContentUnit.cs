@@ -4,7 +4,8 @@ public sealed record Microsoft365ExtractedContentUnit(
     Microsoft365ExtractedContentUnitKind Kind,
     int Order,
     string Text,
-    string SourcePart);
+    string SourcePart,
+    string? ArchivePath = null);
 
 public enum Microsoft365ExtractedContentUnitKind
 {
