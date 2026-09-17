@@ -44,7 +44,7 @@ public sealed class Microsoft365Connector(
         var sharePointGroupsTask = sharePointGroupResolver.ResolveGroupIdsAsync(
             context.OrganizationId,
             context.ExternalTenantId!,
-            context.UserEmail!,
+            normalizedUserId,
             cancellationToken);
 
         await Task.WhenAll(entraGroupsTask, sharePointGroupsTask);

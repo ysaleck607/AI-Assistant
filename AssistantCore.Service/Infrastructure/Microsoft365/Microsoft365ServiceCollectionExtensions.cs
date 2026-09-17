@@ -110,6 +110,7 @@ public static class Microsoft365ServiceCollectionExtensions
         AddProtectedHttpClient<MicrosoftGraphSiteClient>(services);
         services.AddHttpClient<MicrosoftGraphSubscriptionClient>();
         AddProtectedHttpClient<MicrosoftGraphUserGroupClient>(services);
+        AddProtectedHttpClient<MicrosoftGraphUserProfileClient>(services);
         AddProtectedHttpClient<MicrosoftGraphDriveItemPermissionClient>(services);
         AddProtectedHttpClient<MicrosoftSharePointListItemPermissionClient>(services);
         services.AddSingleton<MicrosoftWordContentExtractorClient>();
@@ -142,6 +143,7 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365SubscriptionClient, Microsoft365SubscriptionClientAdapter>();
         services.AddScoped<IMicrosoft365AclResolver, Microsoft365AclResolverAdapter>();
         services.AddScoped<IMicrosoft365UserGroupResolver, Microsoft365UserGroupResolverAdapter>();
+        services.AddScoped<IMicrosoft365UserProfileResolver, Microsoft365UserProfileResolverAdapter>();
         services.AddScoped<IMicrosoft365SharePointGroupResolver, Microsoft365SharePointGroupResolverAdapter>();
         services.AddScoped<IMicrosoft365PassageAclWriter, Microsoft365PassageAclWriterAdapter>();
         services.AddScoped<IMicrosoft365PassageIndexWriter, Microsoft365PassageIndexWriterAdapter>();

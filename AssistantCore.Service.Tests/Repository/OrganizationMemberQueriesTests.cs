@@ -66,6 +66,33 @@ public sealed class OrganizationMemberQueriesTests
         Assert.Same(emailConflict, thrownException);
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_AGuestAndAnInternalMemberSharingAnEmail_When_CreateMember_Then_BothAreCreatedAsDistinctRows(
+        Guid databaseId,
+        Guid organizationId,
+        string internalMemberExternalUserId,
+        string guestExternalUserId,
+        string sharedEmail)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var internalMember = CreateMember(organizationId, internalMemberExternalUserId, sharedEmail);
+        var guestMember = CreateMember(organizationId, guestExternalUserId, sharedEmail);
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var createdInternalMember = await queries.CreateMember(internalMember, CancellationToken.None);
+        var createdGuestMember = await queries.CreateMember(guestMember, CancellationToken.None);
+
+        // Then
+        Assert.Equal(internalMember.Id, createdInternalMember.Id);
+        Assert.Equal(guestMember.Id, createdGuestMember.Id);
+        Assert.NotEqual(createdInternalMember.Id, createdGuestMember.Id);
+    }
+
     private static OrganizationMember CreateMember(Guid organizationId, string externalUserId, string email) =>
         new()
         {

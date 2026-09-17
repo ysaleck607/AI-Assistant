@@ -52,9 +52,9 @@ public sealed class OrganizationMemberConfiguration : IEntityTypeConfiguration<O
             .IsConcurrencyToken()
             .IsRequired();
 
-        builder.HasIndex(member => new { member.OrganizationId, member.Email })
-            .IsUnique();
-
+        // Email is never the identity key: a guest's client-tenant row can legitimately
+        // share an email with an unrelated internal member, and the two must stay distinct.
+        // (OrganizationId, IdentityProvider, ExternalUserId) below is the only identity key.
         builder.HasIndex(member => new { member.OrganizationId, member.IdentityProvider, member.ExternalUserId })
             .IsUnique();
     }

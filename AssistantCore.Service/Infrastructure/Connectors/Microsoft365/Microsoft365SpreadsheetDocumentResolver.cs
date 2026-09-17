@@ -66,7 +66,7 @@ public sealed class Microsoft365SpreadsheetDocumentResolver(
         var sharePointGroupsTask = sharePointGroupResolver.ResolveGroupIdsAsync(
             context.OrganizationId,
             context.ExternalTenantId!,
-            context.UserEmail!,
+            normalizedUserId,
             cancellationToken);
         await Task.WhenAll(entraGroupsTask, sharePointGroupsTask);
         var entraGroups = await entraGroupsTask;

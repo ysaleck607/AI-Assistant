@@ -11,6 +11,7 @@ namespace AssistantCore.Service.Infrastructure.Microsoft365;
 
 public sealed class Microsoft365SharePointGroupResolverAdapter(
     IMicrosoft365SourceDiscoveryRepository sourceRepository,
+    IMicrosoft365UserProfileResolver profileResolver,
     MicrosoftCertificateIdentityClient identityClient,
     MicrosoftSharePointUserGroupClient groupClient,
     IMicrosoft365SecurityIdentityNormalizer identityNormalizer,
@@ -21,18 +22,31 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
     public async Task<IReadOnlyCollection<string>> ResolveGroupIdsAsync(
         Guid organizationId,
         string externalTenantId,
-        string userEmail,
+        string entraUserId,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfEqual(organizationId, Guid.Empty);
         ArgumentException.ThrowIfNullOrWhiteSpace(externalTenantId);
-        ArgumentException.ThrowIfNullOrWhiteSpace(userEmail);
+        ArgumentException.ThrowIfNullOrWhiteSpace(entraUserId);
 
         var configuration = options.Value;
         if ((string.IsNullOrWhiteSpace(configuration.SharePointCertificatePath)
                 && string.IsNullOrWhiteSpace(configuration.SharePointCertificateBase64))
             || string.IsNullOrWhiteSpace(configuration.SharePointCertificatePassword))
         {
+            return [];
+        }
+
+        // SharePoint's local-group API only accepts a user principal name, never an Entra
+        // Object ID. The JWT email claim cannot stand in for it: a guest's client-tenant UPN
+        // differs from their home-tenant email, so it is resolved from the Object ID here
+        // instead of trusting a caller-supplied email. No profile (deleted guest, revoked
+        // invitation) means no groups, never a stale or borrowed identity.
+        var profile = await profileResolver.ResolveAsync(externalTenantId, entraUserId, cancellationToken);
+        if (profile is null)
+        {
+            logger.LogWarning(
+                "Microsoft SharePoint group resolution skipped: no Microsoft Graph profile for the authenticated user.");
             return [];
         }
 
@@ -47,7 +61,8 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
             {
                 siteGroupIds = await ResolveSiteGroupIdsAsync(
                     externalTenantId,
-                    userEmail,
+                    entraUserId,
+                    profile.UserPrincipalName,
                     site,
                     configuration,
                     cancellationToken);
@@ -69,14 +84,15 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
 
     private async Task<IReadOnlyCollection<string>> ResolveSiteGroupIdsAsync(
         string externalTenantId,
-        string userEmail,
+        string entraUserId,
+        string userPrincipalName,
         Microsoft365SharePointSiteData site,
         Microsoft365Options configuration,
         CancellationToken cancellationToken)
     {
         var cacheKey = new SharePointGroupCacheKey(
             externalTenantId.Trim().ToLowerInvariant(),
-            userEmail.Trim().ToLowerInvariant(),
+            entraUserId.Trim().ToLowerInvariant(),
             site.SiteId);
         var cached = await memoryCache.GetOrCreateAsync(
             cacheKey,
@@ -106,7 +122,7 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
                 var groupIds = await groupClient.GetGroupIdsAsync(
                     site.WebUrl,
                     token.AccessToken,
-                    userEmail,
+                    userPrincipalName,
                     cancellationToken);
 
                 return (IReadOnlyCollection<string>)groupIds
@@ -125,6 +141,6 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
 
     private sealed record SharePointGroupCacheKey(
         string TenantId,
-        string UserEmail,
+        string EntraUserId,
         string SiteId);
 }
