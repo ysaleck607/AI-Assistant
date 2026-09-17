@@ -129,8 +129,10 @@ public sealed class AuthenticateUserService(
 
         // The directory is the source of truth for contact details, which never affect
         // authorization: an already-created guest or member whose name or email changed
-        // since their previous sign-in must not be left with a stale local copy.
-        member.Name = ResolveDisplayName(identity);
+        // since their previous sign-in must not be left with a stale local copy. A display
+        // name claim missing this time (some token types omit it) is not a change to
+        // "no name" - it must never erase a name already on file.
+        member.Name = string.IsNullOrWhiteSpace(identity.DisplayName) ? member.Name : identity.DisplayName;
         member.Email = ResolveEmail(identity);
         await organizationMemberQueries.RefreshContactDetailsAsync(
             member.Id,

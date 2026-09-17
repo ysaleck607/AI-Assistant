@@ -126,6 +126,43 @@ public sealed class OrganizationMemberQueriesTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_TwoOrganizationsWithTheSameExternalUserId_When_RefreshContactDetailsAsync_Then_OnlyTheTargetOrganizationsMemberChanges(
+        Guid databaseId,
+        Guid firstOrganizationId,
+        Guid secondOrganizationId,
+        string sharedExternalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given: the identity index is scoped per organization, so the same external user id
+        // can legitimately exist in two organizations. Refreshing one must never touch the other.
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var firstOrganizationMember = CreateMember(firstOrganizationId, sharedExternalUserId, "old-email@contoso.test");
+        var secondOrganizationMember = CreateMember(secondOrganizationId, sharedExternalUserId, "old-email@contoso.test");
+        var secondOrganizationOriginalName = secondOrganizationMember.Name;
+        var secondOrganizationOriginalEmail = secondOrganizationMember.Email;
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.AddRange(firstOrganizationMember, secondOrganizationMember);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        await queries.RefreshContactDetailsAsync(firstOrganizationMember.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var untouchedMember = await verificationContext.OrganizationMembers
+            .SingleAsync(candidate => candidate.Id == secondOrganizationMember.Id);
+        Assert.Equal(secondOrganizationOriginalName, untouchedMember.Name);
+        Assert.Equal(secondOrganizationOriginalEmail, untouchedMember.Email);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_AnUnchangedNameAndEmail_When_RefreshContactDetailsAsync_Then_DoesNotWriteToTheDatabase(
         Guid databaseId,
         Guid organizationId,
