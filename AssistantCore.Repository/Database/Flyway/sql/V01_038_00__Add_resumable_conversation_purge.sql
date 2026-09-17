@@ -94,5 +94,7 @@ DECLARE @ForeignKeyName SYSNAME = (
 
 IF @ForeignKeyName IS NOT NULL
 BEGIN
-    EXEC(N'ALTER TABLE [dbo].[ConversationPurgeRequest] DROP CONSTRAINT ' + QUOTENAME(@ForeignKeyName));
+    DECLARE @DropForeignKeySql NVARCHAR(MAX) =
+        N'ALTER TABLE [dbo].[ConversationPurgeRequest] DROP CONSTRAINT ' + QUOTENAME(@ForeignKeyName);
+    EXEC(@DropForeignKeySql);
 END;
