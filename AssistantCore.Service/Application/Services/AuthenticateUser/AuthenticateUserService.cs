@@ -127,6 +127,17 @@ public sealed class AuthenticateUserService(
                 TenantAdmissionException.TenantAdminRequired);
         }
 
+        // The directory is the source of truth for contact details, which never affect
+        // authorization: an already-created guest or member whose name or email changed
+        // since their previous sign-in must not be left with a stale local copy.
+        member.Name = ResolveDisplayName(identity);
+        member.Email = ResolveEmail(identity);
+        await organizationMemberQueries.RefreshContactDetailsAsync(
+            member.Id,
+            member.Name,
+            member.Email,
+            cancellationToken);
+
         await organizationMemberQueries.RecordSuccessfulAuthenticationAsync(
             member.Id,
             timeProvider.GetUtcNow(),

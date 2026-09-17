@@ -220,4 +220,28 @@ public sealed class OrganizationMemberQueries(
         member.LastSuccessfulAuthenticationAt = authenticatedAt;
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task RefreshContactDetailsAsync(
+        Guid memberId,
+        string name,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        var member = await dbContext.OrganizationMembers
+            .SingleOrDefaultAsync(candidate => candidate.Id == memberId, cancellationToken);
+
+        // Identity is always the Object ID, never the name or email, so a mismatch here is
+        // never a conflict to resolve - it is simply the directory's current value for a
+        // guest or member whose profile changed since their previous sign-in.
+        if (member is null
+            || (string.Equals(member.Name, name, StringComparison.Ordinal)
+                && string.Equals(member.Email, email, StringComparison.Ordinal)))
+        {
+            return;
+        }
+
+        member.Name = name;
+        member.Email = email;
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

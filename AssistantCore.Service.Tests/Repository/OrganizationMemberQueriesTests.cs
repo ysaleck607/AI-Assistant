@@ -93,6 +93,65 @@ public sealed class OrganizationMemberQueriesTests
         Assert.NotEqual(createdInternalMember.Id, createdGuestMember.Id);
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_AChangedNameAndEmail_When_RefreshContactDetailsAsync_Then_PersistsTheNewValues(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var member = CreateMember(organizationId, externalUserId, "old-email@contoso.test");
+        member.Name = "Old name";
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        await queries.RefreshContactDetailsAsync(member.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var persistedMember = await verificationContext.OrganizationMembers.SingleAsync(candidate => candidate.Id == member.Id);
+        Assert.Equal(newName, persistedMember.Name);
+        Assert.Equal(newEmail, persistedMember.Email);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AnUnchangedNameAndEmail_When_RefreshContactDetailsAsync_Then_DoesNotWriteToTheDatabase(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string email)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var member = CreateMember(organizationId, externalUserId, email);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When / Then - a SaveChangesAsync on a context with no tracked changes is a no-op,
+        // so this only proves the guard skips the write; ThrowOnceDbContext would over-assert.
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        await queries.RefreshContactDetailsAsync(member.Id, member.Name, email, CancellationToken.None);
+
+        Assert.False(context.ChangeTracker.HasChanges());
+    }
+
     private static OrganizationMember CreateMember(Guid organizationId, string externalUserId, string email) =>
         new()
         {

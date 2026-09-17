@@ -57,4 +57,10 @@ public interface IOrganizationMemberQueries
         Guid memberId,
         DateTimeOffset authenticatedAt,
         CancellationToken cancellationToken = default);
+
+    Task RefreshContactDetailsAsync(
+        Guid memberId,
+        string name,
+        string email,
+        CancellationToken cancellationToken = default);
 }

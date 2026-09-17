@@ -380,6 +380,12 @@ public sealed class BackofficeOrganizationServiceTests
             Guid memberId,
             DateTimeOffset authenticatedAt,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task RefreshContactDetailsAsync(
+            Guid memberId,
+            string name,
+            string email,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class StubAdministrativeAuditRepository : IAdministrativeAuditRepository
