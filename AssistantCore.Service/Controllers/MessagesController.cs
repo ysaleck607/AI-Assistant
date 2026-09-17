@@ -19,6 +19,7 @@ public sealed class MessagesController(IDispatcher dispatcher) : ControllerBase
     [SwaggerResponse(StatusCodes.Status200OK, "Message handled successfully.", typeof(SendMessageResponse))]
     [SwaggerResponse(StatusCodes.Status400BadRequest, "Invalid request.")]
     [SwaggerResponse(StatusCodes.Status401Unauthorized, "Authentication required.")]
+    [SwaggerResponse(StatusCodes.Status429TooManyRequests, "The organization's token quota is exhausted.")]
     public async Task<ActionResult<SendMessageResponse>> SendMessage(
         [FromBody] SendMessageRequest request,
         CancellationToken cancellationToken)

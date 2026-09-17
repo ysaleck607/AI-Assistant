@@ -98,7 +98,19 @@ public sealed class BackofficeOrganizationQueries(AssistantCoreDbContext dbConte
                 .AsNoTracking()
                 .CountAsync(site =>
                     site.OrganizationId == organizationId
-                    && site.IsIndexed,
+                    && (dbContext.Microsoft365Drives.Any(drive =>
+                            drive.OrganizationId == organizationId
+                            && drive.SiteId == site.SiteId
+                            && drive.Kind == Microsoft365SourceKind.SharePointDrive
+                            && drive.IsIndexed
+                            && (drive.Status == Microsoft365SourceStatus.Enabled
+                                || drive.Status == Microsoft365SourceStatus.FullResyncRequired))
+                        || dbContext.Microsoft365Lists.Any(list =>
+                            list.OrganizationId == organizationId
+                            && list.SiteId == site.SiteId
+                            && list.IsIndexed
+                            && (list.Status == Microsoft365SourceStatus.Enabled
+                                || list.Status == Microsoft365SourceStatus.FullResyncRequired))),
                     cancellationToken),
             await dbContext.Microsoft365Drives
                 .AsNoTracking()

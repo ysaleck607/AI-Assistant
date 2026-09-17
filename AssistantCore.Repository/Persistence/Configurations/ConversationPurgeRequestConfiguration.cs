@@ -35,14 +35,36 @@ public sealed class ConversationPurgeRequestConfiguration
             .HasMaxLength(20)
             .IsRequired();
 
-        builder.HasOne(request => request.Conversation)
-            .WithMany()
-            .HasForeignKey(request => request.ConversationId)
-            .OnDelete(DeleteBehavior.Cascade);
+        builder.Property(request => request.Step)
+            .HasConversion<string>()
+            .HasMaxLength(40)
+            .IsRequired();
+
+        builder.Property(request => request.LeaseExpiresAt)
+            .HasColumnType("datetimeoffset");
+
+        builder.Property(request => request.NextAttemptAt)
+            .HasColumnType("datetimeoffset");
+
+        builder.Property(request => request.CompletedAt)
+            .HasColumnType("datetimeoffset");
+
+        builder.Property(request => request.LastErrorCode)
+            .HasMaxLength(100);
+
+        // Aucune clef etrangere vers Conversation : la demande porte la preuve de la
+        // purge et doit survivre a la conversation qu'elle vient de supprimer. Une
+        // cascade emporterait la preuve en meme temps que la donnee.
 
         builder.HasIndex(request => request.ConversationId)
             .IsUnique();
 
-        builder.HasIndex(request => new { request.Status, request.PurgeAfter });
+        builder.HasIndex(request => new
+        {
+            request.Status,
+            request.PurgeAfter,
+            request.NextAttemptAt,
+            request.LeaseExpiresAt
+        });
     }
 }

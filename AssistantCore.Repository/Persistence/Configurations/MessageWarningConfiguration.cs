@@ -4,7 +4,8 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssistantCore.Repository.Persistence.Configurations;
 
-public sealed class MessageWarningConfiguration : IEntityTypeConfiguration<MessageWarning>
+public sealed class MessageWarningConfiguration(IFieldEncryptor contentEncryptor)
+    : IEntityTypeConfiguration<MessageWarning>
 {
     public void Configure(EntityTypeBuilder<MessageWarning> builder)
     {
@@ -19,7 +20,8 @@ public sealed class MessageWarningConfiguration : IEntityTypeConfiguration<Messa
             .IsRequired();
 
         builder.Property(warning => warning.Content)
-            .HasMaxLength(1000)
+            .HasConversion(new EncryptedStringConverter(contentEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
 
         builder.HasIndex(warning => warning.MessageId);

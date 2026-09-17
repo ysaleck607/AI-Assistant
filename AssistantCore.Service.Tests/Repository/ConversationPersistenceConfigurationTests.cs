@@ -18,7 +18,8 @@ public sealed class ConversationPersistenceConfigurationTests
 
         // Then
         Assert.NotNull(entityType);
-        Assert.Equal(200, entityType.FindProperty(nameof(Conversation.Title))?.GetMaxLength());
+        Assert.IsType<EncryptedStringConverter>(
+            entityType.FindProperty(nameof(Conversation.Title))?.GetValueConverter());
         Assert.Equal(20, entityType.FindProperty(nameof(Conversation.Status))?.GetMaxLength());
         AssertIndex(
             entityType,

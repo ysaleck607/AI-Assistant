@@ -78,6 +78,7 @@ public sealed class Microsoft365PendingSynchronizationService(
                     await driveSynchronizationService.StartInitialSynchronizationAsync(
                         work.SourceId,
                         work.SynchronizationId,
+                        work.ReindexOperationId,
                         cancellationToken);
                 }
                 else

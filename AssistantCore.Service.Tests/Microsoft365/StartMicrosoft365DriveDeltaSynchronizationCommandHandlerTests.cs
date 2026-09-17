@@ -40,6 +40,7 @@ public sealed class StartMicrosoft365DriveDeltaSynchronizationCommandHandlerTest
         public Task<Microsoft365DriveInitialSynchronizationResult> StartInitialSynchronizationAsync(
             Guid sourceId,
             Guid synchronizationId,
+            Guid? reindexOperationId = null,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

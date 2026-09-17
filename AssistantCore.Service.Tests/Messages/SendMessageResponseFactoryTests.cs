@@ -43,7 +43,6 @@ public sealed class SendMessageResponseFactoryTests
         Assert.Equal(agentTurnResult.ModelName, response.Model);
         Assert.Equal(["One source was unavailable."], response.Warnings);
         Assert.Equal(completedProcessing.CreatedAt, response.CreatedAt);
-        Assert.Equal(completedProcessing.Usage, response.Usage);
         var source = Assert.Single(response.Sources);
         Assert.Equal(evidence.SourceType, source.Type);
         Assert.Equal(evidence.Title, source.Title);

@@ -20,4 +20,5 @@ public sealed record AzureAiSearchPassageDocument(
     string? Url = null,
     DateTimeOffset? ModifiedAt = null,
     IReadOnlyList<float>? ContentVector = null,
-    string SourceType = "sharepoint");
+    string SourceType = "sharepoint",
+    string? ArchivePath = null);

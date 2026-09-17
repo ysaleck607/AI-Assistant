@@ -10,4 +10,12 @@ public sealed class AdministrativeAuditRepository(AssistantCoreDbContext dbConte
     {
         dbContext.AdministrativeAuditEntries.Add(entry);
     }
+
+    public async Task PersistAsync(
+        AdministrativeAuditEntry entry,
+        CancellationToken cancellationToken = default)
+    {
+        dbContext.AdministrativeAuditEntries.Add(entry);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
 }

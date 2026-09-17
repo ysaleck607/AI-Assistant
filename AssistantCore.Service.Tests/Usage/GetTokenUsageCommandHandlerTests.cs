@@ -46,6 +46,11 @@ public sealed class GetTokenUsageCommandHandlerTests
     {
         public Guid? ReceivedOrganizationId { get; private set; }
 
+        public Task EnsureQuotaAvailableAsync(
+            Guid organizationId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<MessageUsageResponse> RecordConsumptionAsync(
             Guid organizationId,
             Guid assistantMessageId,

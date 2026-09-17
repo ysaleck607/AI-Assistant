@@ -29,7 +29,8 @@ public static class Microsoft365DocumentFailurePolicy
         }
 
         var isPermanent = attemptCount >= options.DocumentWorkMaximumAttempts
-            || exception is InvalidDataException or ArgumentException;
+            || exception is InvalidDataException or ArgumentException
+            || exception is Microsoft365ContentExtractionException { IsTransient: false };
         return new Microsoft365DocumentFailureDecision(
             isPermanent,
             TimeSpan.FromMinutes(options.DocumentWorkRetryMinutes));

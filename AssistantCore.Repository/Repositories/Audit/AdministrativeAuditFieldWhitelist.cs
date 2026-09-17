@@ -15,7 +15,15 @@ public static class AdministrativeAuditFieldWhitelist
             },
             [AdministrativeAuditAction.ConversationArchived] = new HashSet<string> { "status" },
             [AdministrativeAuditAction.ConversationDeleted] = new HashSet<string> { "deletedAt" },
-            [AdministrativeAuditAction.ConnectorStatusChanged] = new HashSet<string> { "status", "isIndexed" }
+            [AdministrativeAuditAction.ConnectorStatusChanged] = new HashSet<string> { "status", "isIndexed" },
+            [AdministrativeAuditAction.UserAccessReevaluated] = new HashSet<string>
+            {
+                "accessAllowed", "diagnosticCode"
+            },
+            [AdministrativeAuditAction.Microsoft365ReindexRequested] = new HashSet<string>
+            {
+                "operationId", "libraryCount", "reason"
+            }
         };
 
     public static void Validate(AdministrativeAuditAction action, IReadOnlyDictionary<string, object?> values)

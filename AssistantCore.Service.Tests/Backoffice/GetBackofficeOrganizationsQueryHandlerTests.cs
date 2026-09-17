@@ -87,5 +87,29 @@ public sealed class GetBackofficeOrganizationsQueryHandlerTests
             ReceivedCancellationToken = cancellationToken;
             return Task.FromResult(DetailsResponse!);
         }
+
+        public Task<BackofficeUserListResponse> GetUsersAsync(
+            Guid organizationId,
+            string? search,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<BackofficeUserDetailsDto> GetUserDetailsAsync(
+            Guid organizationId,
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
+
+        public Task<BackofficeAccessReevaluationResultDto> ReevaluateUserAccessAsync(
+            Guid organizationId,
+            Guid userId,
+            CancellationToken cancellationToken = default)
+        {
+            throw new NotSupportedException();
+        }
     }
 }

@@ -9,6 +9,13 @@ internal sealed class StubAdministrativeAuditRepository : IAdministrativeAuditRe
     public void Stage(AdministrativeAuditEntry entry)
     {
     }
+
+    public Task PersistAsync(
+        AdministrativeAuditEntry entry,
+        CancellationToken cancellationToken = default)
+    {
+        return Task.CompletedTask;
+    }
 }
 
 internal sealed class RecordingAdministrativeAuditRepository : IAdministrativeAuditRepository
@@ -18,6 +25,14 @@ internal sealed class RecordingAdministrativeAuditRepository : IAdministrativeAu
     public void Stage(AdministrativeAuditEntry entry)
     {
         StagedEntries.Add(entry);
+    }
+
+    public Task PersistAsync(
+        AdministrativeAuditEntry entry,
+        CancellationToken cancellationToken = default)
+    {
+        StagedEntries.Add(entry);
+        return Task.CompletedTask;
     }
 }
 

@@ -110,38 +110,50 @@ public sealed class FoundryAgentRuntime(
                 "Foundry requested tool {ToolName}.",
                 toolCall.Name);
 
-            var requestedCall = new AiRequestedToolCall(
-                $"foundry-{Guid.NewGuid():N}",
-                internalTool.Name,
-                toolCall.Arguments);
-            var validatedCall = await toolCallValidator.ValidateAsync(
-                requestedCall,
-                [internalTool],
-                token);
-            var result = await toolExecutionRouter.ExecuteAsync(
-                validatedCall,
-                executionContext,
-                token);
-
-            lock (executedResultsLock)
+            try
             {
-                executedResults.Add(result);
+                var requestedCall = new AiRequestedToolCall(
+                    $"foundry-{Guid.NewGuid():N}",
+                    internalTool.Name,
+                    toolCall.Arguments);
+                var validatedCall = await toolCallValidator.ValidateAsync(
+                    requestedCall,
+                    [internalTool],
+                    token);
+                var result = await toolExecutionRouter.ExecuteAsync(
+                    validatedCall,
+                    executionContext,
+                    token);
+
+                lock (executedResultsLock)
+                {
+                    executedResults.Add(result);
+                }
+
+                toolStopwatch.Stop();
+                logger.LogInformation(
+                    "Foundry tool {ToolName} completed in {ElapsedMilliseconds} ms with status {ToolStatus}.",
+                    toolCall.Name,
+                    toolStopwatch.Elapsed.TotalMilliseconds,
+                    result.Status);
+
+                return JsonSerializer.Serialize(new
+                {
+                    status = result.Status,
+                    evidence = result.Evidence,
+                    warnings = result.Warnings,
+                    errorCode = result.ErrorCode
+                });
             }
-
-            toolStopwatch.Stop();
-            logger.LogInformation(
-                "Foundry tool {ToolName} completed in {ElapsedMilliseconds} ms with status {ToolStatus}.",
-                toolCall.Name,
-                toolStopwatch.Elapsed.TotalMilliseconds,
-                result.Status);
-
-            return JsonSerializer.Serialize(new
+            catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                status = result.Status,
-                evidence = result.Evidence,
-                warnings = result.Warnings,
-                errorCode = result.ErrorCode
-            });
+                logger.LogError(
+                    exception,
+                    "Foundry tool {ToolName} threw an unhandled exception after {ElapsedMilliseconds} ms.",
+                    toolCall.Name,
+                    toolStopwatch.Elapsed.TotalMilliseconds);
+                throw;
+            }
         }
 
         var clientRequest = new FoundryAgentClientRequest(

@@ -115,7 +115,8 @@ public sealed class Microsoft365Connector(
                 reference.Url,
                 reference.ModifiedAt,
                 reference.RelevanceScore,
-                reference.RelevanceScore))
+                reference.RelevanceScore,
+                reference.ArchivePath))
             .Where(record => record.RelevanceScore is null
                 || record.RelevanceScore >= configuration.MinimumSemanticRelevanceScore)
             .ToArray();

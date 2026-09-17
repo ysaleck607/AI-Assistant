@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssistantCore.Repository.Persistence.Configurations;
 
-public sealed class ConversationConfiguration : IEntityTypeConfiguration<Conversation>
+public sealed class ConversationConfiguration(IFieldEncryptor titleEncryptor) : IEntityTypeConfiguration<Conversation>
 {
     public void Configure(EntityTypeBuilder<Conversation> builder)
     {
@@ -22,7 +22,8 @@ public sealed class ConversationConfiguration : IEntityTypeConfiguration<Convers
             .IsRequired();
 
         builder.Property(conversation => conversation.Title)
-            .HasMaxLength(200)
+            .HasConversion(new EncryptedStringConverter(titleEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
 
         builder.Property(conversation => conversation.ContextSummary)

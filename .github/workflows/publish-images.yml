@@ -1,0 +1,65 @@
+name: Publish backend images
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AZURE_CORE_OUTPUT: none
+  ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+
+jobs:
+  publish:
+    name: Build and publish immutable images
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: publish-images
+    concurrency:
+      group: publish-backend-images
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout validated commit
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Sign in to Azure with OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Sign in to ACR
+        run: az acr login --name "$ACR_NAME"
+
+      - name: Build and push immutable images
+        env:
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+        run: |
+          IMAGE_TAG="sha-${COMMIT_SHA}"
+          LOGIN_SERVER="${ACR_NAME}.azurecr.io"
+
+          docker build --file deploy/docker/api.Dockerfile --tag "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}" .
+          docker build --file deploy/docker/worker.Dockerfile --tag "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}" .
+          docker build --file AssistantCore.Repository/Database/Flyway/Dockerfile --tag "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}" AssistantCore.Repository/Database/Flyway
+
+          docker push "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}"
+          docker push "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}"
+          docker push "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}"
+
+          {
+            echo "### Backend images published"
+            echo
+            echo "Image tag: \`${IMAGE_TAG}\`"
+            echo
+            echo "Use this tag when creating a CERTIF release candidate."
+          } >> "$GITHUB_STEP_SUMMARY"

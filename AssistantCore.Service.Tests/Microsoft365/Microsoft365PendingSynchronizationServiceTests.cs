@@ -167,6 +167,59 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
             outcomeRepository ?? new StubSourceSynchronizationRepository(),
             new FixedTimeProvider(now ?? DateTimeOffset.UtcNow));
 
+    [Theory, AutoDomainData]
+    public async Task Given_ASynchronizationOfAReindex_When_ProcessNextAsync_Then_ForwardsTheReindexOperation(
+        Guid synchronizationId,
+        Guid sourceId,
+        Guid organizationId,
+        Guid reindexOperationId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // Given
+        var work = CreateWork(
+            synchronizationId,
+            sourceId,
+            organizationId,
+            Microsoft365SourceKind.SharePointDrive,
+            Microsoft365SynchronizationType.Initial,
+            reindexOperationId: reindexOperationId);
+        var driveService = new StubDriveSynchronizationService();
+        var service = CreateService(work, driveService: driveService, now: now);
+
+        // When
+        await service.ProcessNextAsync(cancellationToken);
+
+        // Then
+        Assert.Equal((sourceId, synchronizationId), driveService.InitialSynchronization);
+        Assert.Equal(reindexOperationId, driveService.ReceivedReindexOperationId);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ASynchronizationOutsideAReindex_When_ProcessNextAsync_Then_ForwardsNoReindexOperation(
+        Guid synchronizationId,
+        Guid sourceId,
+        Guid organizationId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        // Given
+        var work = CreateWork(
+            synchronizationId,
+            sourceId,
+            organizationId,
+            Microsoft365SourceKind.SharePointDrive,
+            Microsoft365SynchronizationType.Initial);
+        var driveService = new StubDriveSynchronizationService();
+        var service = CreateService(work, driveService: driveService, now: now);
+
+        // When
+        await service.ProcessNextAsync(cancellationToken);
+
+        // Then
+        Assert.Null(driveService.ReceivedReindexOperationId);
+    }
+
     private static Microsoft365PendingSynchronization CreateWork(
         Guid synchronizationId,
         Guid sourceId,
@@ -174,7 +227,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         Microsoft365SourceKind sourceKind,
         Microsoft365SynchronizationType type,
         bool isIndexed = true,
-        Microsoft365SourceStatus sourceStatus = Microsoft365SourceStatus.Enabled) =>
+        Microsoft365SourceStatus sourceStatus = Microsoft365SourceStatus.Enabled,
+        Guid? reindexOperationId = null) =>
         new(
             synchronizationId,
             sourceId,
@@ -182,7 +236,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
             sourceKind,
             sourceStatus,
             isIndexed,
-            type);
+            type,
+            reindexOperationId);
 
     private sealed class StubPendingSynchronizationRepository(
         Microsoft365PendingSynchronization work) : IMicrosoft365PendingSynchronizationRepository
@@ -197,14 +252,17 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
     {
         public (Guid SourceId, Guid SynchronizationId)? InitialSynchronization { get; private set; }
         public (Guid SourceId, Guid SynchronizationId)? DeltaSynchronization { get; private set; }
+        public Guid? ReceivedReindexOperationId { get; private set; }
         public CancellationToken ReceivedCancellationToken { get; private set; }
 
         public Task<Microsoft365DriveInitialSynchronizationResult> StartInitialSynchronizationAsync(
             Guid sourceId,
             Guid synchronizationId,
+            Guid? reindexOperationId = null,
             CancellationToken cancellationToken = default)
         {
             InitialSynchronization = (sourceId, synchronizationId);
+            ReceivedReindexOperationId = reindexOperationId;
             ReceivedCancellationToken = cancellationToken;
             return Task.FromResult(new Microsoft365DriveInitialSynchronizationResult(
                 Microsoft365DriveInitialSynchronizationStatus.Completed,

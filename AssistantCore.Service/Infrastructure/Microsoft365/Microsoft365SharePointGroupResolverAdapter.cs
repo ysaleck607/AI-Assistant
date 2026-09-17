@@ -4,6 +4,7 @@ using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Infrastructure.Microsoft365;
@@ -14,7 +15,8 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
     MicrosoftSharePointUserGroupClient groupClient,
     IMicrosoft365SecurityIdentityNormalizer identityNormalizer,
     IMemoryCache memoryCache,
-    IOptions<Microsoft365Options> options) : IMicrosoft365SharePointGroupResolver
+    IOptions<Microsoft365Options> options,
+    ILogger<Microsoft365SharePointGroupResolverAdapter> logger) : IMicrosoft365SharePointGroupResolver
 {
     public async Task<IReadOnlyCollection<string>> ResolveGroupIdsAsync(
         Guid organizationId,
@@ -40,12 +42,25 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
         var normalizedGroupIds = new HashSet<string>(StringComparer.Ordinal);
         foreach (var site in sites)
         {
-            var siteGroupIds = await ResolveSiteGroupIdsAsync(
-                externalTenantId,
-                userEmail,
-                site,
-                configuration,
-                cancellationToken);
+            IReadOnlyCollection<string> siteGroupIds;
+            try
+            {
+                siteGroupIds = await ResolveSiteGroupIdsAsync(
+                    externalTenantId,
+                    userEmail,
+                    site,
+                    configuration,
+                    cancellationToken);
+            }
+            catch (MicrosoftExternalException exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Microsoft SharePoint group resolution failed for site {SiteId}; continuing without this site's groups.",
+                    site.SiteId);
+                continue;
+            }
+
             normalizedGroupIds.UnionWith(siteGroupIds);
         }
 

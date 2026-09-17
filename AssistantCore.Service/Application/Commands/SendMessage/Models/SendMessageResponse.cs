@@ -1,5 +1,3 @@
-using AssistantCore.Service.Application.Models.Usage;
-
 namespace AssistantCore.Service.Application.Commands.SendMessage.Models;
 
 public sealed record SendMessageResponse(
@@ -9,5 +7,4 @@ public sealed record SendMessageResponse(
     string Model,
     IReadOnlyCollection<MessageSourceResponse> Sources,
     IReadOnlyCollection<string> Warnings,
-    DateTimeOffset CreatedAt,
-    MessageUsageResponse Usage);
+    DateTimeOffset CreatedAt);

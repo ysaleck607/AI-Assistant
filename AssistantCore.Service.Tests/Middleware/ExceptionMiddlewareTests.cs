@@ -105,6 +105,30 @@ public sealed class ExceptionMiddlewareTests
         Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Code").ValueKind);
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_AnExhaustedOrganizationQuota_When_InvokeAsync_Then_Returns429WithPeriodEndMetadata(
+        DateTimeOffset periodEndsAt)
+    {
+        // Given
+        var exception = new OrganizationTokenQuotaExceededException(periodEndsAt);
+        var context = CreateHttpContext();
+        var middleware = CreateMiddleware(
+            _ => Task.FromException(exception),
+            Environments.Production);
+
+        // When
+        await middleware.InvokeAsync(context);
+
+        // Then
+        using var response = await ReadResponse(context);
+        Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
+        Assert.Equal(exception.ErrorCode, response.RootElement.GetProperty("Code").GetString());
+        Assert.Equal(
+            periodEndsAt,
+            response.RootElement.GetProperty("Metadata").GetProperty("PeriodEndsAt").GetDateTimeOffset());
+        Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Detail").ValueKind);
+    }
+
     [Fact]
     public async Task Given_APlainForbiddenException_When_InvokingMiddleware_Then_ReturnsNullCode()
     {

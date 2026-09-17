@@ -8,13 +8,11 @@ using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.AiModels;
 using AssistantCore.Service.Application.Models.Messages.Lifecycle;
 using AssistantCore.Service.Application.Services.Conversations;
-using AssistantCore.Service.Application.Services.Usage;
 
 namespace AssistantCore.Service.Application.Services.Messages.Lifecycle;
 
 public sealed class MessageProcessingLifecycleService(
     IConversationRepository conversationRepository,
-    IUsageTrackingService usageTrackingService,
     TimeProvider timeProvider) : IMessageProcessingLifecycleService
 {
     private const int MaximumProcessingErrorCodeLength = 100;
@@ -184,18 +182,9 @@ public sealed class MessageProcessingLifecycleService(
                 cancellationToken)
             ?? throw CreateConversationNotFoundException();
 
-        var usage = await usageTrackingService.RecordConsumptionAsync(
-            processing.OrganizationId,
-            completedMessage.Id,
-            result.Usage.InputTokens,
-            result.Usage.OutputTokens,
-            completedAt,
-            cancellationToken);
-
         return new CompletedMessageProcessing(
             completedMessage.Id,
-            completedMessage.CreatedAt,
-            usage);
+            completedMessage.CreatedAt);
     }
 
     public async Task FailAsync(

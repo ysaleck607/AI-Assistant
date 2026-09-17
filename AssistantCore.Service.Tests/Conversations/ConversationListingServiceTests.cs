@@ -284,5 +284,20 @@ public sealed class ConversationListingServiceTests
             DateTimeOffset failedAt,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
+
+        public Task<int> ReencryptAllConversationTitlesAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ReencryptAllMessageContentAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ReencryptAllMessageWarningContentAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

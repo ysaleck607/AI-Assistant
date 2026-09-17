@@ -6,5 +6,14 @@ public enum Microsoft365ContentExtractionWarning
     ExternalLinkIgnored,
     EmbeddedObjectIgnored,
     HiddenSheetIgnored,
-    FormulaValueUnavailable
+    FormulaValueUnavailable,
+    PartialArchive,
+    UnsafeArchivePath,
+    DuplicateArchiveEntry,
+    UnsupportedArchiveEntry,
+    CorruptedArchiveEntry,
+    ArchiveDepthExceeded,
+    ArchiveTooLarge,
+    EncryptedArchive,
+    CorruptedArchive
 }

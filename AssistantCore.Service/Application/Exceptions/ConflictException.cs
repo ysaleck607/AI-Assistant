@@ -9,5 +9,7 @@ public sealed class ConflictException(string message, string? errorCode = null)
 
     public const string MemberVersionConflict = "member_version_conflict";
 
+    public const string Microsoft365ReindexAlreadyRunning = "microsoft365_reindex_already_running";
+
     public string ErrorCode { get; } = errorCode ?? "conflict";
 }

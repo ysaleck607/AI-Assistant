@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       backend_image_tag:
-        description: Optional backend tag; defaults to the image deployed in DEV
+        description: Optional backend SHA tag; defaults to the latest published tag in ACR
         required: false
         type: string
       spa_image_tag:
-        description: Optional SPA tag; defaults to the image deployed in DEV
+        description: Optional SPA SHA tag; defaults to the latest published tag in ACR
         required: false
         type: string
       release_candidate:
@@ -22,7 +22,6 @@ permissions:
 
 env:
   AZURE_CORE_OUTPUT: none
-  DEV_RESOURCE_GROUP: ${{ vars.AZURE_DEV_RESOURCE_GROUP }}
   ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
 
 jobs:
@@ -30,7 +29,7 @@ jobs:
     name: Create immutable manifest
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    environment: dev
+    environment: certif
 
     steps:
       - name: Sign in to Azure with OIDC
@@ -47,12 +46,30 @@ jobs:
           REQUESTED_SPA_TAG: ${{ inputs.spa_image_tag }}
           REQUESTED_RC_NAME: ${{ inputs.release_candidate }}
         run: |
-          CURRENT_API="$(az containerapp show --name ca-assistant-api-dev --resource-group "$DEV_RESOURCE_GROUP" --query properties.template.containers[0].image --output tsv)"
-          CURRENT_SPA="$(az containerapp show --name ca-assistant-spa-dev --resource-group "$DEV_RESOURCE_GROUP" --query properties.template.containers[0].image --output tsv)"
-
-          BACKEND_TAG="${REQUESTED_BACKEND_TAG:-${CURRENT_API##*:}}"
-          SPA_TAG="${REQUESTED_SPA_TAG:-${CURRENT_SPA##*:}}"
+          BACKEND_TAG="$REQUESTED_BACKEND_TAG"
+          SPA_TAG="$REQUESTED_SPA_TAG"
+          if [ -z "$BACKEND_TAG" ]; then
+            BACKEND_TAG="$(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository assistant-api \
+              --orderby time_desc \
+              --output tsv \
+              | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
+          fi
+          if [ -z "$SPA_TAG" ]; then
+            SPA_TAG="$(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository assistant-spa \
+              --orderby time_desc \
+              --output tsv \
+              | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
+          fi
           RC_NAME="${REQUESTED_RC_NAME:-rc-$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}}"
+
+          if [ -z "$BACKEND_TAG" ] || [ -z "$SPA_TAG" ]; then
+            echo "No published SHA tag was found in ACR for the backend or SPA." >&2
+            exit 1
+          fi
 
           for tag in "$BACKEND_TAG" "$SPA_TAG"; do
             if ! printf '%s' "$tag" | grep -Eq '^sha-[0-9a-f]{40}$'; then
@@ -65,8 +82,10 @@ jobs:
             exit 1
           fi
 
-          test "$CURRENT_API" = "${ACR_NAME}.azurecr.io/assistant-api:${BACKEND_TAG}"
-          test "$CURRENT_SPA" = "${ACR_NAME}.azurecr.io/assistant-spa:${SPA_TAG}"
+          az acr repository show --name "$ACR_NAME" --image "assistant-api:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-worker:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-spa:${SPA_TAG}" --only-show-errors >/dev/null
 
           {
             echo "backend_tag=${BACKEND_TAG}"
@@ -90,7 +109,7 @@ jobs:
             'schemaVersion: 1' \
             "releaseCandidate: ${RC_NAME}" \
             "createdAtUtc: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            'sourceEnvironment: dev' \
+            'sourceEnvironment: acr' \
             'images:' \
             "  api: ${ACR_NAME}.azurecr.io/assistant-api@${API_DIGEST}" \
             "  worker: ${ACR_NAME}.azurecr.io/assistant-worker@${WORKER_DIGEST}" \

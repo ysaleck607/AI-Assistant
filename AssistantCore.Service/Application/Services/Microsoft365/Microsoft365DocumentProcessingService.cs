@@ -6,6 +6,7 @@ using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Microsoft365;
 using AssistantCore.Service.Application.Models.Microsoft365.ContentExtraction;
 using AssistantCore.Service.Application.Models.Microsoft365.Permissions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Application.Services.Microsoft365;
@@ -21,7 +22,8 @@ public sealed class Microsoft365DocumentProcessingService(
     IMicrosoft365PassageIndexWriter indexWriter,
     IMicrosoft365ContentAclSynchronizationService aclSynchronizationService,
     IOptions<Microsoft365Options> options,
-    TimeProvider timeProvider) : IMicrosoft365DocumentProcessingService
+    TimeProvider timeProvider,
+    ILogger<Microsoft365DocumentProcessingService> logger) : IMicrosoft365DocumentProcessingService
 {
     public async Task<bool> ProcessNextAsync(CancellationToken cancellationToken = default)
     {
@@ -56,6 +58,11 @@ public sealed class Microsoft365DocumentProcessingService(
         }
         catch (Exception exception)
         {
+            logger.LogError(
+                exception,
+                "Microsoft 365 document work {WorkId} failed for drive item {DriveItemId}.",
+                work.Id,
+                work.DriveItemId);
             var failure = Microsoft365DocumentFailurePolicy.Evaluate(
                 exception,
                 work.AttemptCount,
@@ -63,7 +70,7 @@ public sealed class Microsoft365DocumentProcessingService(
             await workRepository.FailAsync(
                 work,
                 failure.IsPermanent,
-                exception.GetType().Name,
+                GetErrorCode(exception),
                 timeProvider.GetUtcNow().Add(failure.RetryDelay),
                 cancellationToken);
         }
@@ -133,7 +140,7 @@ public sealed class Microsoft365DocumentProcessingService(
             cancellationToken);
         if (extraction.Status != Microsoft365ContentExtractionStatus.Success)
         {
-            throw new InvalidDataException($"Document extraction ended with {extraction.Status}.");
+            throw new Microsoft365ContentExtractionException(extraction.Status);
         }
 
         var sourceType = source.Kind == Microsoft365SourceKind.OneDrive
@@ -207,6 +214,11 @@ public sealed class Microsoft365DocumentProcessingService(
 
     private static string BuildEmbeddingContent(Microsoft365SearchPassage passage) =>
         $"Document: {passage.Title}\n\n{passage.Content}";
+
+    private static string GetErrorCode(Exception exception) =>
+        exception is Microsoft365ContentExtractionException extractionException
+            ? extractionException.ErrorCode
+            : exception.GetType().Name;
 
     private async Task DeleteAsync(
         Microsoft365DocumentWork work,

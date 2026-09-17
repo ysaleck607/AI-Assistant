@@ -4,6 +4,10 @@ namespace AssistantCore.Service.Application.Services.Usage;
 
 public interface IUsageTrackingService
 {
+    Task EnsureQuotaAvailableAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default);
+
     /// <summary>
     /// Enregistre la consommation d'un message Assistant de maniere idempotente
     /// (un replay du meme message ne compte jamais deux fois), puis retourne le

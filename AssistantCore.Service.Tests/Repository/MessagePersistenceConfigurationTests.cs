@@ -22,6 +22,8 @@ public sealed class MessagePersistenceConfigurationTests
         Assert.Equal(20, entityType.FindProperty(nameof(Message.ProcessingStatus))?.GetMaxLength());
         Assert.Equal(100, entityType.FindProperty(nameof(Message.Model))?.GetMaxLength());
         Assert.Equal(100, entityType.FindProperty(nameof(Message.ProcessingErrorCode))?.GetMaxLength());
+        Assert.IsType<EncryptedStringConverter>(
+            entityType.FindProperty(nameof(Message.Content))?.GetValueConverter());
         AssertIndex(
             entityType,
             nameof(Message.ConversationId),
@@ -68,7 +70,8 @@ public sealed class MessagePersistenceConfigurationTests
 
         // Then
         Assert.NotNull(entityType);
-        Assert.Equal(1000, entityType.FindProperty(nameof(MessageWarning.Content))?.GetMaxLength());
+        Assert.IsType<EncryptedStringConverter>(
+            entityType.FindProperty(nameof(MessageWarning.Content))?.GetValueConverter());
         AssertIndex(entityType, nameof(MessageWarning.MessageId));
         AssertForeignKey(
             entityType,

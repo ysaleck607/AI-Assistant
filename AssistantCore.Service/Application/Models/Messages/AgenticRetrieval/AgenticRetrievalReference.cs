@@ -10,4 +10,5 @@ public sealed record AgenticRetrievalReference(
     string? DriveItemId,
     string? Url,
     DateTimeOffset? ModifiedAt,
-    double? RelevanceScore);
+    double? RelevanceScore,
+    string? ArchivePath = null);

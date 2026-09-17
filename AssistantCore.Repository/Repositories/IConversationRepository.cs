@@ -151,4 +151,10 @@ public interface IConversationRepository
         string errorCode,
         DateTimeOffset failedAt,
         CancellationToken cancellationToken = default);
+
+    Task<int> ReencryptAllConversationTitlesAsync(int batchSize, CancellationToken cancellationToken = default);
+
+    Task<int> ReencryptAllMessageContentAsync(int batchSize, CancellationToken cancellationToken = default);
+
+    Task<int> ReencryptAllMessageWarningContentAsync(int batchSize, CancellationToken cancellationToken = default);
 }

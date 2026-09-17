@@ -9,4 +9,6 @@ public static class AdministrativeAuditSubjectTypes
     public const string Member = "Member";
 
     public const string Conversation = "Conversation";
+
+    public const string Microsoft365Connection = "Microsoft365Connection";
 }

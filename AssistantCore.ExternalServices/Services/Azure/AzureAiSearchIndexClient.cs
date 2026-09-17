@@ -54,8 +54,9 @@ public sealed class AzureAiSearchIndexClient
         using var existing = await httpClient.SendAsync(get, cancellationToken);
         if (!existing.IsSuccessStatusCode && existing.StatusCode != HttpStatusCode.NotFound)
         {
+            var errorBody = await existing.Content.ReadAsStringAsync(cancellationToken);
             throw new AzureAiSearchExternalException(
-                $"Azure AI Search index validation failed with status {(int)existing.StatusCode}.");
+                $"Azure AI Search index validation failed with status {(int)existing.StatusCode}: {errorBody}");
         }
 
         if (existing.IsSuccessStatusCode)
@@ -136,8 +137,9 @@ public sealed class AzureAiSearchIndexClient
         using var created = await httpClient.SendAsync(put, cancellationToken);
         if (!created.IsSuccessStatusCode)
         {
+            var errorBody = await created.Content.ReadAsStringAsync(cancellationToken);
             throw new AzureAiSearchExternalException(
-                $"Azure AI Search index creation failed with status {(int)created.StatusCode}.");
+                $"Azure AI Search index creation failed with status {(int)created.StatusCode}: {errorBody}");
         }
 
         if (!string.IsNullOrWhiteSpace(knowledgeSourceName)
@@ -190,6 +192,7 @@ public sealed class AzureAiSearchIndexClient
                     sourceDataFields = new[]
                     {
                         new { name = "chunkId" },
+                        new { name = "archivePath" },
                         new { name = "sourceType" },
                         new { name = "title" },
                         new { name = "content" },

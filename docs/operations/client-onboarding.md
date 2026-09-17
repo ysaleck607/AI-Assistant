@@ -255,9 +255,10 @@ permissions Microsoft 365 restent appliquées.
 | Une synchronisation est restée à `Running` après un arrêt | Redémarrer le worker | Le worker la reprend après expiration du lease |
 | Une souscription Microsoft Graph est en erreur | Corriger l'accès ou la configuration du webhook | Laisser tourner la maintenance du worker |
 
-SQLPad peut servir à observer les états techniques, mais il ne doit pas être
-utilisé pour supprimer les lignes d'onboarding. Une modification manuelle doit
-rester une intervention exceptionnelle et comprise.
+Les états techniques doivent être vérifiés à l'aide des outils d'observabilité
+et des accès opérationnels approuvés. Les lignes d'onboarding ne doivent pas
+être supprimées manuellement; toute intervention de ce type doit rester
+exceptionnelle et comprise.
 
 <a id="client-onboarding-state"></a>
 ## État avant et après

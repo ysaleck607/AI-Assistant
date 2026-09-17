@@ -22,6 +22,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOrganizationConnectorQueries, OrganizationConnectorQueries>();
         services.AddScoped<IOrganizationRepository, OrganizationRepository>();
         services.AddScoped<IConversationRepository, ConversationRepository>();
+        services.AddScoped<IConversationPurgeRepository, ConversationPurgeRepository>();
         services.AddScoped<IMicrosoft365ConnectionRepository, Microsoft365ConnectionRepository>();
         services.AddScoped<IMicrosoft365DriveRepository, Microsoft365DriveRepository>();
         services.AddScoped<IMicrosoft365ListSynchronizationRepository, Microsoft365ListSynchronizationRepository>();
@@ -36,6 +37,9 @@ public static class ServiceCollectionExtensions
         services.AddScoped<
             IMicrosoft365PendingSynchronizationRepository,
             Microsoft365PendingSynchronizationRepository>();
+        services.AddScoped<
+            IMicrosoft365ReindexOperationRepository,
+            Microsoft365ReindexOperationRepository>();
         services.AddScoped<ITokenConsumptionRepository, TokenConsumptionRepository>();
         services.AddScoped<IAdministrativeAuditRepository, AdministrativeAuditRepository>();
 

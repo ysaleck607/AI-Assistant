@@ -106,6 +106,37 @@ public sealed class Microsoft365IngestionWorkerTests
         Assert.True(aclReconciliationService.CompletedBefore(reconciliationService.FirstRunAt));
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_TheWorkerStarts_When_RunAsync_Then_ReindexProgressIsPublished(
+        bool _)
+    {
+        // Given
+        var reindexProgressService = new RecordingReindexProgressService();
+        var services = new ServiceCollection()
+            .AddSingleton<IMicrosoft365ReindexProgressService>(reindexProgressService)
+            .AddSingleton<IMicrosoft365AclReconciliationService>(new RecordingAclReconciliationService())
+            .AddSingleton<IMicrosoft365SubscriptionMaintenanceService>(
+                new RecordingSubscriptionMaintenanceService())
+            .AddSingleton<IMicrosoft365ReconciliationService>(new RecordingReconciliationService())
+            .BuildServiceProvider();
+        var worker = new Microsoft365IngestionWorker(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            Options.Create(new Microsoft365WorkerOptions
+            {
+                RunStartupConnectionCheck = false,
+                MaintenanceIntervalSeconds = 300
+            }),
+            NullLogger<Microsoft365IngestionWorker>.Instance);
+
+        // When
+        await worker.StartAsync(CancellationToken.None);
+        await reindexProgressService.WaitUntilRunAsync().WaitAsync(TimeSpan.FromSeconds(1));
+        await worker.StopAsync(CancellationToken.None);
+
+        // Then
+        Assert.Equal(1, reindexProgressService.CallCount);
+    }
+
     private sealed class RecordingIngestionOrchestrator : IMicrosoft365IngestionOrchestrator
     {
         private readonly TaskCompletionSource scheduled = new(
@@ -160,6 +191,23 @@ public sealed class Microsoft365IngestionWorkerTests
         public Task RunReconciliationAsync(CancellationToken cancellationToken = default)
         {
             FirstRunAt ??= Stopwatch.GetTimestamp();
+            CallCount++;
+            ran.TrySetResult();
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class RecordingReindexProgressService : IMicrosoft365ReindexProgressService
+    {
+        private readonly TaskCompletionSource ran = new(
+            TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int CallCount { get; private set; }
+
+        public Task WaitUntilRunAsync() => ran.Task;
+
+        public Task RunAsync(CancellationToken cancellationToken = default)
+        {
             CallCount++;
             ran.TrySetResult();
             return Task.CompletedTask;

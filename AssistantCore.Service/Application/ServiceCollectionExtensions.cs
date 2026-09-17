@@ -2,6 +2,7 @@ using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Backoffice;
 using AssistantCore.Service.Application.Services.AuthenticateUser;
 using AssistantCore.Service.Application.Services.Conversations;
+using AssistantCore.Service.Application.Services.Conversations.Purge;
 using AssistantCore.Service.Application.Services.Conversations.Audit;
 using AssistantCore.Service.Application.Services.Conversations.Pagination;
 using AssistantCore.Service.Application.Services.Members;
@@ -62,6 +63,12 @@ public static class ServiceCollectionExtensions
                 options => options.MaximumTitleLength is > 0 and <= MaximumPersistedTitleLength,
                 $"{ConversationOptions.SectionName}:{nameof(ConversationOptions.MaximumTitleLength)} must be between 1 and {MaximumPersistedTitleLength}.")
             .ValidateOnStart();
+        services.AddOptions<ConversationPurgeOptions>()
+            .Bind(configuration.GetSection(ConversationPurgeOptions.SectionName))
+            .Validate(
+                options => options.IsValid(),
+                $"{ConversationPurgeOptions.SectionName} requires positive lease, polling, attempt and backoff values.")
+            .ValidateOnStart();
         services.AddOptions<RetentionOptions>()
             .Bind(configuration.GetSection(RetentionOptions.SectionName))
             .Validate(
@@ -82,6 +89,7 @@ public static class ServiceCollectionExtensions
                 $"{UsageOptions.SectionName}:{nameof(UsageOptions.DefaultMonthlyTokenLimit)} must be greater than zero.")
             .ValidateOnStart();
         services.AddScoped<IUsageTrackingService, UsageTrackingService>();
+        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
         services.AddScoped<ISendMessageCommandValidator, SendMessageCommandValidator>();
         services.AddSingleton<IConversationCursorCodec, ConversationCursorCodec>();
         services.AddSingleton<IConversationMessageCursorCodec, ConversationMessageCursorCodec>();
@@ -89,6 +97,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IConversationMessageListingService, ConversationMessageListingService>();
         services.AddScoped<IConversationAuditWriter, LoggingConversationAuditWriter>();
         services.AddScoped<IConversationLifecycleService, ConversationLifecycleService>();
+        services.AddScoped<IConversationEncryptionBackfillService, ConversationEncryptionBackfillService>();
         services.AddSingleton<ITenantAdmissionPolicy, TenantAdmissionPolicy>();
         services.AddScoped<IMicrosoft365OnboardingCompletionChecker, Microsoft365OnboardingCompletionChecker>();
         services.AddScoped<IMessageUserContextService, MessageUserContextService>();
@@ -124,6 +133,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365SiteDiscoveryService, Microsoft365SiteDiscoveryService>();
         services.AddScoped<IMicrosoft365SiteSelectionService, Microsoft365SiteSelectionService>();
         services.AddScoped<IMicrosoft365DriveAdministrationService, Microsoft365DriveAdministrationService>();
+        services.AddScoped<IMicrosoft365ReindexService, Microsoft365ReindexService>();
+        services.AddScoped<IMicrosoft365ReindexStatusService, Microsoft365ReindexStatusService>();
         services.AddScoped<IMicrosoft365CurrentUserOneDriveIndexingService, Microsoft365CurrentUserOneDriveIndexingService>();
 
         return services;
@@ -153,6 +164,8 @@ public static class ServiceCollectionExtensions
             IMicrosoft365PendingSynchronizationService,
             Microsoft365PendingSynchronizationService>();
         services.AddScoped<IMicrosoft365IndexCleanupService, Microsoft365IndexCleanupService>();
+        services.AddScoped<IMicrosoft365ReindexIndexSweeper, Microsoft365ReindexIndexSweeper>();
+        services.AddScoped<IMicrosoft365ReindexProgressService, Microsoft365ReindexProgressService>();
         services.AddScoped<
             IMicrosoft365ContentAclSynchronizationService,
             Microsoft365ContentAclSynchronizationService>();

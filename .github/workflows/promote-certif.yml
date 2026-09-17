@@ -19,7 +19,6 @@ concurrency:
 
 env:
   AZURE_CORE_OUTPUT: none
-  DEV_RESOURCE_GROUP: ${{ vars.AZURE_DEV_RESOURCE_GROUP }}
   CERTIF_RESOURCE_GROUP: ${{ vars.AZURE_CERTIF_RESOURCE_GROUP }}
   ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
 
@@ -100,7 +99,7 @@ jobs:
             echo "RELEASE_CANDIDATE=${RELEASE_CANDIDATE}"
           } >> "$GITHUB_ENV"
 
-      - name: Verify images and DEV provenance
+      - name: Verify images in ACR
         env:
           API_IMAGE: ${{ env.API_IMAGE }}
           WORKER_IMAGE: ${{ env.WORKER_IMAGE }}
@@ -114,22 +113,6 @@ jobs:
               --image "$REPOSITORY" \
               --only-show-errors >/dev/null
           done
-
-          DEV_API_IMAGE="$(az containerapp show \
-            --name ca-assistant-api-dev \
-            --resource-group "$DEV_RESOURCE_GROUP" \
-            --query properties.template.containers[0].image --output tsv)"
-          DEV_SPA_IMAGE="$(az containerapp show \
-            --name ca-assistant-spa-dev \
-            --resource-group "$DEV_RESOURCE_GROUP" \
-            --query properties.template.containers[0].image --output tsv)"
-
-          DEV_API_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "${DEV_API_IMAGE#${ACR_NAME}.azurecr.io/}" --query digest --output tsv)"
-          DEV_SPA_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "${DEV_SPA_IMAGE#${ACR_NAME}.azurecr.io/}" --query digest --output tsv)"
-          if [ "$DEV_API_DIGEST" != "${API_IMAGE##*@}" ] || [ "$DEV_SPA_DIGEST" != "${SPA_IMAGE##*@}" ]; then
-            echo "The release candidate is not the API and SPA revision currently validated in DEV." >&2
-            exit 1
-          fi
 
       - name: Run CERTIF Flyway job
         run: |
@@ -161,13 +144,13 @@ jobs:
           echo "Flyway did not finish within 10 minutes." >&2
           exit 1
 
-      - name: Deploy CERTIF release candidate at zero replicas
+      - name: Deploy CERTIF release candidate for readiness checks
         run: |
           az containerapp update \
             --name ca-assistant-api-certif \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --image "$API_IMAGE" \
-            --min-replicas 0
+            --min-replicas 1
           az containerapp update \
             --name ca-assistant-worker-certif \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
@@ -176,7 +159,8 @@ jobs:
           az containerapp update \
             --name ca-assistant-spa-certif \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
-            --image "$SPA_IMAGE"
+            --image "$SPA_IMAGE" \
+            --min-replicas 1
 
       - name: Verify CERTIF readiness
         run: |
@@ -188,3 +172,12 @@ jobs:
             "https://${API_FQDN}/health/live"
           curl --fail --retry 12 --retry-delay 10 --retry-all-errors \
             "https://${API_FQDN}/health/ready"
+
+          SPA_FQDN="$(az containerapp show \
+            --name ca-assistant-spa-certif \
+            --resource-group "$CERTIF_RESOURCE_GROUP" \
+            --query properties.configuration.ingress.fqdn --output tsv)"
+          curl --fail --retry 12 --retry-delay 10 --retry-all-errors \
+            "https://${SPA_FQDN}/"
+          curl --fail --retry 12 --retry-delay 10 --retry-all-errors \
+            "https://${SPA_FQDN}/assets/config/config.json"

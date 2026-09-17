@@ -5,6 +5,7 @@
 - [But](#conversation-management-purpose)
 - [Renommer ou archiver](#conversation-management-patch)
 - [Supprimer](#conversation-management-delete)
+- [Purge physique](#conversation-management-purge)
 - [Exemples de contrats](#conversation-management-examples)
 - [Accès](#conversation-management-access)
 - [Règles](#conversation-management-rules)
@@ -68,6 +69,53 @@ DELETE /api/conversations/{conversationId}
 
 La réponse est `204 No Content`. La première étape est une suppression logique
 avec date UTC. La purge physique est asynchrone et suit la politique de rétention.
+
+<a id="conversation-management-purge"></a>
+## Purge physique
+
+La suppression logique dépose une demande de purge portant la date à partir de
+laquelle elle devient éligible, calculée depuis la durée de récupération
+configurée. Un worker séparé des contrôleurs HTTP la traite ensuite : une purge
+peut durer et ne doit pas dépendre d'une requête utilisateur.
+
+### Étapes
+
+La purge s'exécute en quatre étapes, dans cet ordre :
+
+| Étape | Effet |
+| --- | --- |
+| `DeleteMessageSources` | Efface les sources et avertissements des messages |
+| `DeleteMessages` | Efface les messages |
+| `DeleteConversation` | Efface la conversation |
+| `Verify` | Constate qu'il ne reste plus aucune ligne |
+
+Chaque étape réussie est enregistrée avant de passer à la suivante. Un arrêt
+brutal reprend à la dernière étape confirmée au lieu de tout recommencer, et
+chaque étape reste idempotente : une reprise au milieu d'une étape interrompue
+ne produit ni doublon ni erreur.
+
+Aucune étape ne vise Azure AI Search : l'index ne contient que du contenu
+Microsoft 365, jamais de conversation ni de message.
+
+### Reprise et échecs
+
+Une demande réclamée porte un bail. Passé son expiration, elle redevient
+disponible : un worker disparu en cours de route ne bloque jamais une purge.
+
+Un échec est d'abord temporaire et reprogrammé avec un délai qui double à chaque
+tentative, afin qu'une base indisponible ne soit pas harcelée. Au-delà du nombre
+maximal de tentatives, il devient permanent : la demande cesse d'être rejouée et
+reste visible pour alerte.
+
+### Preuve
+
+`Completed` n'est enregistré qu'après la vérification. Marquer une purge terminée
+sans vérifier laisserait croire qu'une donnée a disparu alors qu'elle subsiste.
+
+La demande de purge survit à la conversation qu'elle vient d'effacer et conserve
+le nombre de messages et de sources supprimés, le nombre de tentatives et la date
+de fin. **Elle ne conserve aucun contenu** : ni titre, ni message, ni source,
+qui sont précisément ce que la purge vient de supprimer.
 
 <a id="conversation-management-examples"></a>
 ## Exemples de contrats

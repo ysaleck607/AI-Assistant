@@ -1,6 +1,7 @@
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Repositories;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Services.Usage;
 using Microsoft.Extensions.Options;
 
@@ -106,6 +107,28 @@ public sealed class UsageTrackingServiceTests
         // Then
         Assert.Equal(0, response.TokensRemaining);
         Assert.True(response.IsExhausted);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_UsageExceedsTheLimit_When_EnsureQuotaAvailableAsync_Then_ThrowsWithThePeriodEnd(
+        Guid organizationId)
+    {
+        // Given
+        var now = DateTimeOffset.Parse("2026-08-18T15:42:00Z");
+        var repository = new StubTokenConsumptionRepository { SumToReturn = 1_000_000 };
+        var service = CreateService(repository, defaultMonthlyTokenLimit: 1_000_000, now: now);
+
+        // When
+        var exception = await Assert.ThrowsAsync<OrganizationTokenQuotaExceededException>(() =>
+            service.EnsureQuotaAvailableAsync(organizationId, CancellationToken.None));
+
+        // Then
+        Assert.Equal(
+            DateTimeOffset.Parse("2026-09-01T00:00:00Z"),
+            exception.PeriodEndsAt);
+        Assert.Equal(
+            OrganizationTokenQuotaExceededException.Code,
+            exception.ErrorCode);
     }
 
     [Theory, AutoDomainData]

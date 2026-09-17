@@ -3,7 +3,6 @@ targetScope = 'resourceGroup'
 param location string = resourceGroup().location
 
 @allowed([
-  'dev'
   'certif'
 ])
 param environmentName string

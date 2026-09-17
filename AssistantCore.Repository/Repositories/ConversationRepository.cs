@@ -573,6 +573,70 @@ public sealed class ConversationRepository(
         return ConversationDeleteStatus.Deleted;
     }
 
+    public Task<int> ReencryptAllConversationTitlesAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default) =>
+        ReencryptAllAsync(
+            skip => dbContext.Conversations
+                .OrderBy(conversation => conversation.Id)
+                .Skip(skip)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken),
+            conversation => dbContext.Entry(conversation).Property(c => c.Title).IsModified = true,
+            cancellationToken);
+
+    public Task<int> ReencryptAllMessageContentAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default) =>
+        ReencryptAllAsync(
+            skip => dbContext.Messages
+                .OrderBy(message => message.Id)
+                .Skip(skip)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken),
+            message => dbContext.Entry(message).Property(m => m.Content).IsModified = true,
+            cancellationToken);
+
+    public Task<int> ReencryptAllMessageWarningContentAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default) =>
+        ReencryptAllAsync(
+            skip => dbContext.MessageWarnings
+                .OrderBy(warning => warning.Id)
+                .Skip(skip)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken),
+            warning => dbContext.Entry(warning).Property(w => w.Content).IsModified = true,
+            cancellationToken);
+
+    private async Task<int> ReencryptAllAsync<TEntity>(
+        Func<int, Task<List<TEntity>>> fetchBatch,
+        Action<TEntity> markModified,
+        CancellationToken cancellationToken)
+        where TEntity : class
+    {
+        var totalProcessed = 0;
+        while (true)
+        {
+            var batch = await fetchBatch(totalProcessed);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var entity in batch)
+            {
+                markModified(entity);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
+            totalProcessed += batch.Count;
+        }
+
+        return totalProcessed;
+    }
+
     private static void ValidateIdentifier(
         Guid currentValue,
         Guid expectedValue,

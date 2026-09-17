@@ -5,9 +5,7 @@ using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Messages;
 using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.Lifecycle;
-using AssistantCore.Service.Application.Models.Usage;
 using AssistantCore.Service.Application.Services.Messages.Lifecycle;
-using AssistantCore.Service.Application.Services.Usage;
 
 namespace AssistantCore.Service.Tests.Messages;
 
@@ -19,16 +17,11 @@ public sealed class MessageProcessingLifecycleServiceTests
         OrganizationMember member,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        // When
         var result = await service.StartAsync(
             null,
             "Question already validated",
@@ -36,7 +29,6 @@ public sealed class MessageProcessingLifecycleServiceTests
             member,
             cancellationTokenSource.Token);
 
-        // Then
         Assert.NotNull(repository.CreatedConversation);
         Assert.NotNull(repository.CreatedFirstMessage);
         Assert.Equal(organization.Id, repository.CreatedConversation.OrganizationId);
@@ -65,15 +57,10 @@ public sealed class MessageProcessingLifecycleServiceTests
         OrganizationMember member,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
 
-        // When
         var result = await service.StartAsync(
             null,
             "Politique de teletravail",
@@ -81,7 +68,6 @@ public sealed class MessageProcessingLifecycleServiceTests
             member,
             CancellationToken.None);
 
-        // Then
         Assert.NotNull(repository.CreatedConversation);
         Assert.NotNull(result.CreatedConversation);
         Assert.Equal(repository.CreatedConversation.Id, result.CreatedConversation.Id);
@@ -100,20 +86,12 @@ public sealed class MessageProcessingLifecycleServiceTests
         Conversation conversation,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
-        var repository = new RecordingConversationRepository
-        {
-            FoundConversation = conversation
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var repository = new RecordingConversationRepository { FoundConversation = conversation };
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
 
-        // When
         var result = await service.StartAsync(
             conversation.Id,
             "Another validated question",
@@ -121,7 +99,6 @@ public sealed class MessageProcessingLifecycleServiceTests
             member,
             CancellationToken.None);
 
-        // Then
         Assert.Null(result.CreatedConversation);
     }
 
@@ -131,24 +108,13 @@ public sealed class MessageProcessingLifecycleServiceTests
         OrganizationMember member,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
         var longMessage = new string('a', 250);
 
-        // When
-        await service.StartAsync(
-            null,
-            longMessage,
-            organization,
-            member,
-            CancellationToken.None);
+        await service.StartAsync(null, longMessage, organization, member, CancellationToken.None);
 
-        // Then
         Assert.NotNull(repository.CreatedConversation);
         Assert.Equal(200, repository.CreatedConversation.Title.Length);
         Assert.EndsWith("…", repository.CreatedConversation.Title, StringComparison.Ordinal);
@@ -161,21 +127,13 @@ public sealed class MessageProcessingLifecycleServiceTests
         Conversation conversation,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
-        var repository = new RecordingConversationRepository
-        {
-            FoundConversation = conversation
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var repository = new RecordingConversationRepository { FoundConversation = conversation };
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        // When
         var result = await service.StartAsync(
             conversation.Id,
             "Another validated question",
@@ -183,7 +141,6 @@ public sealed class MessageProcessingLifecycleServiceTests
             member,
             cancellationTokenSource.Token);
 
-        // Then
         Assert.Null(repository.CreatedConversation);
         Assert.NotNull(repository.AddedUserMessage);
         Assert.Equal(conversation.Id, repository.AddedUserMessage.ConversationId);
@@ -203,24 +160,13 @@ public sealed class MessageProcessingLifecycleServiceTests
         Organization organization,
         OrganizationMember member)
     {
-        // Given
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
-            service.StartAsync(
-                Guid.NewGuid(),
-                "Question",
-                organization,
-                member,
-                CancellationToken.None));
+            service.StartAsync(Guid.NewGuid(), "Question", organization, member, CancellationToken.None));
 
-        // Then
         Assert.Equal("Conversation not found.", exception.Message);
         Assert.Null(repository.AddedUserMessage);
         Assert.Null(repository.ReceivedProcessingStatus);
@@ -233,7 +179,6 @@ public sealed class MessageProcessingLifecycleServiceTests
         OrganizationMember member,
         Conversation conversation)
     {
-        // Given
         member.OrganizationId = organization.Id;
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
@@ -242,21 +187,11 @@ public sealed class MessageProcessingLifecycleServiceTests
             FoundConversation = conversation,
             ReturnNullWhenAddingMessage = true
         };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
-            service.StartAsync(
-                conversation.Id,
-                "Question",
-                organization,
-                member,
-                CancellationToken.None));
+            service.StartAsync(conversation.Id, "Question", organization, member, CancellationToken.None));
 
-        // Then
         Assert.Equal("Conversation not found.", exception.Message);
         Assert.Null(repository.ReceivedProcessingStatus);
         Assert.Equal(
@@ -269,24 +204,13 @@ public sealed class MessageProcessingLifecycleServiceTests
         Organization organization,
         OrganizationMember member)
     {
-        // Given
         member.OrganizationId = Guid.NewGuid();
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
-            service.StartAsync(
-                null,
-                "Question",
-                organization,
-                member,
-                CancellationToken.None));
+            service.StartAsync(null, "Question", organization, member, CancellationToken.None));
 
-        // Then
         Assert.Contains("does not belong", exception.Message, StringComparison.Ordinal);
         Assert.Empty(repository.Operations);
     }
@@ -296,7 +220,6 @@ public sealed class MessageProcessingLifecycleServiceTests
         StartedMessageProcessing processing,
         DateTimeOffset completedAt)
     {
-        // Given
         var evidence = new RetrievedEvidence(
             "evidence-1",
             "ERP",
@@ -310,26 +233,13 @@ public sealed class MessageProcessingLifecycleServiceTests
             "gpt",
             [evidence],
             ["Quebec inventory was unavailable."],
-            new AgentTurnUsage(
-                TimeSpan.FromSeconds(2),
-                InputTokens: 100,
-                OutputTokens: 20,
-                ModelCallCount: 2,
-                ToolCallCount: 1));
+            new AgentTurnUsage(TimeSpan.FromSeconds(2), 100, 20, 2, 1));
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(completedAt));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(completedAt));
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        // When
-        var result = await service.CompleteAsync(
-            processing,
-            agentTurnResult,
-            cancellationTokenSource.Token);
+        var result = await service.CompleteAsync(processing, agentTurnResult, cancellationTokenSource.Token);
 
-        // Then
         Assert.NotNull(repository.CompletedAssistantMessage);
         Assert.Equal(MessageRole.Assistant, repository.CompletedAssistantMessage.Role);
         Assert.Equal(MessageProcessingStatus.Completed, repository.CompletedAssistantMessage.ProcessingStatus);
@@ -349,67 +259,17 @@ public sealed class MessageProcessingLifecycleServiceTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AValidAgentTurn_When_CompleteAsync_Then_RecordsConsumptionForTheAssistantMessage(
-        StartedMessageProcessing processing,
-        DateTimeOffset completedAt)
-    {
-        // Given
-        var agentTurnResult = new AgentTurnResult(
-            "There are 248 units available.",
-            "gpt",
-            [],
-            [],
-            new AgentTurnUsage(
-                TimeSpan.FromSeconds(2),
-                InputTokens: 100,
-                OutputTokens: 20,
-                ModelCallCount: 2,
-                ToolCallCount: 1));
-        var repository = new RecordingConversationRepository();
-        var usageTrackingService = new StubUsageTrackingService
-        {
-            Response = new MessageUsageResponse(120, 1_000_000, 120, 999_880, completedAt.AddDays(1), false)
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            usageTrackingService,
-            new StubTimeProvider(completedAt));
-
-        // When
-        var result = await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
-
-        // Then
-        Assert.Equal(processing.OrganizationId, usageTrackingService.ReceivedOrganizationId);
-        Assert.Equal(repository.CompletedAssistantMessage!.Id, usageTrackingService.ReceivedAssistantMessageId);
-        Assert.Equal(100, usageTrackingService.ReceivedInputTokens);
-        Assert.Equal(20, usageTrackingService.ReceivedOutputTokens);
-        Assert.Equal(usageTrackingService.Response, result.Usage);
-    }
-
-    [Theory, AutoDomainData]
     public async Task Given_RepositoryRejectsCompletion_When_CompleteAsync_Then_ThrowsNotFound(
         StartedMessageProcessing processing,
         AgentTurnResult agentTurnResult,
         DateTimeOffset completedAt)
     {
-        // Given
-        var repository = new RecordingConversationRepository
-        {
-            ReturnNullWhenCompletingMessage = true
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(completedAt));
+        var repository = new RecordingConversationRepository { ReturnNullWhenCompletingMessage = true };
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(completedAt));
 
-        // When
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
-            service.CompleteAsync(
-                processing,
-                agentTurnResult,
-                CancellationToken.None));
+            service.CompleteAsync(processing, agentTurnResult, CancellationToken.None));
 
-        // Then
         Assert.Equal("Conversation not found.", exception.Message);
     }
 
@@ -422,21 +282,15 @@ public sealed class MessageProcessingLifecycleServiceTests
         StartedMessageProcessing processing,
         DateTimeOffset failedAt)
     {
-        // Given
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(failedAt));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(failedAt));
         using var cancellationTokenSource = new CancellationTokenSource();
 
-        // When
         await service.FailAsync(
             processing,
             new MessageProcessingFailure("  provider_unavailable  ", wasCancelled),
             cancellationTokenSource.Token);
 
-        // Then
         Assert.Equal(expectedStatus, repository.ReceivedFailureStatus);
         Assert.Equal("provider_unavailable", repository.ReceivedErrorCode);
         Assert.Equal(failedAt, repository.ReceivedFailureDate);
@@ -448,24 +302,15 @@ public sealed class MessageProcessingLifecycleServiceTests
     public async Task Given_RepositoryRejectsFailure_When_FailAsync_Then_ThrowsNotFound(
         StartedMessageProcessing processing)
     {
-        // Given
-        var repository = new RecordingConversationRepository
-        {
-            ReturnFalseWhenFailingMessage = true
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var repository = new RecordingConversationRepository { ReturnFalseWhenFailingMessage = true };
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.FailAsync(
                 processing,
                 new MessageProcessingFailure("provider_unavailable", false),
                 CancellationToken.None));
 
-        // Then
         Assert.Equal("Conversation not found.", exception.Message);
     }
 
@@ -473,21 +318,15 @@ public sealed class MessageProcessingLifecycleServiceTests
     public async Task Given_AnInvalidErrorCode_When_FailAsync_Then_ThrowsBeforePersistence(
         StartedMessageProcessing processing)
     {
-        // Given
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.FailAsync(
                 processing,
                 new MessageProcessingFailure(new string('x', 101), false),
                 CancellationToken.None));
 
-        // Then
         Assert.Equal("errorCode", exception.ParamName);
         Assert.Empty(repository.Operations);
     }
@@ -496,65 +335,17 @@ public sealed class MessageProcessingLifecycleServiceTests
     public async Task Given_RepositoryFailure_When_FailAsync_Then_PropagatesTheException(
         StartedMessageProcessing processing)
     {
-        // Given
         var persistenceException = new InvalidOperationException("Persistence failed.");
-        var repository = new RecordingConversationRepository
-        {
-            FailureException = persistenceException
-        };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(DateTimeOffset.UtcNow));
+        var repository = new RecordingConversationRepository { FailureException = persistenceException };
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
 
-        // When
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.FailAsync(
                 processing,
                 new MessageProcessingFailure("provider_unavailable", false),
                 CancellationToken.None));
 
-        // Then
         Assert.Same(persistenceException, exception);
-    }
-
-    private sealed class StubTimeProvider(DateTimeOffset utcNow) : TimeProvider
-    {
-        public override DateTimeOffset GetUtcNow() => utcNow;
-    }
-
-    private sealed class StubUsageTrackingService : IUsageTrackingService
-    {
-        public Guid? ReceivedOrganizationId { get; private set; }
-
-        public Guid? ReceivedAssistantMessageId { get; private set; }
-
-        public long? ReceivedInputTokens { get; private set; }
-
-        public long? ReceivedOutputTokens { get; private set; }
-
-        public MessageUsageResponse Response { get; init; } =
-            new(0, 0, 0, 0, DateTimeOffset.UtcNow, false);
-
-        public Task<MessageUsageResponse> RecordConsumptionAsync(
-            Guid organizationId,
-            Guid assistantMessageId,
-            long inputTokens,
-            long outputTokens,
-            DateTimeOffset occurredAt,
-            CancellationToken cancellationToken = default)
-        {
-            ReceivedOrganizationId = organizationId;
-            ReceivedAssistantMessageId = assistantMessageId;
-            ReceivedInputTokens = inputTokens;
-            ReceivedOutputTokens = outputTokens;
-            return Task.FromResult(Response);
-        }
-
-        public Task<TokenUsageResponse> GetCurrentUsageAsync(
-            Guid organizationId,
-            CancellationToken cancellationToken = default) =>
-            throw new NotSupportedException();
     }
 
     [Theory, AutoDomainData]
@@ -564,18 +355,13 @@ public sealed class MessageProcessingLifecycleServiceTests
         Conversation conversation,
         DateTimeOffset now)
     {
-        // Given
         member.OrganizationId = organization.Id;
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
         conversation.Status = ConversationStatus.Archived;
         var repository = new RecordingConversationRepository { FoundConversation = conversation };
-        var service = new MessageProcessingLifecycleService(
-            repository,
-            new StubUsageTrackingService(),
-            new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
 
-        // When
         var exception = await Assert.ThrowsAsync<ConflictException>(() =>
             service.StartAsync(
                 conversation.Id,
@@ -584,8 +370,12 @@ public sealed class MessageProcessingLifecycleServiceTests
                 member,
                 CancellationToken.None));
 
-        // Then
         Assert.Equal(ConflictException.ConversationArchived, exception.ErrorCode);
+    }
+
+    private sealed class StubTimeProvider(DateTimeOffset utcNow) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => utcNow;
     }
 
     private sealed class RecordingConversationRepository : IConversationRepository
@@ -613,39 +403,22 @@ public sealed class MessageProcessingLifecycleServiceTests
             throw new NotSupportedException();
 
         public Conversation? FoundConversation { get; init; }
-
         public bool ReturnNullWhenAddingMessage { get; init; }
-
         public bool ReturnNullWhenCompletingMessage { get; init; }
-
         public bool ReturnFalseWhenFailingMessage { get; init; }
-
         public Exception? FailureException { get; init; }
-
         public Conversation? CreatedConversation { get; private set; }
-
         public Message? CreatedFirstMessage { get; private set; }
-
         public Message? AddedUserMessage { get; private set; }
-
         public Guid? ReceivedMessageId { get; private set; }
-
         public MessageProcessingStatus? ReceivedProcessingStatus { get; private set; }
-
         public Message? CompletedAssistantMessage { get; private set; }
-
         public IReadOnlyCollection<MessageSource> CompletedSources { get; private set; } = [];
-
         public IReadOnlyCollection<MessageWarning> CompletedWarnings { get; private set; } = [];
-
         public MessageProcessingStatus? ReceivedFailureStatus { get; private set; }
-
         public string? ReceivedErrorCode { get; private set; }
-
         public DateTimeOffset? ReceivedFailureDate { get; private set; }
-
         public CancellationToken ReceivedCancellationToken { get; private set; }
-
         public List<string> Operations { get; } = [];
 
         public Task<(Conversation Conversation, Message UserMessage)> CreateConversationWithFirstMessageAsync(
@@ -656,7 +429,6 @@ public sealed class MessageProcessingLifecycleServiceTests
             CancellationToken cancellationToken = default)
         {
             Operations.Add("CreateConversation");
-            // La persistance reelle affecte la version initiale avant d'enregistrer.
             conversation.Version = 1;
             CreatedConversation = conversation;
             CreatedFirstMessage = userMessage;
@@ -779,5 +551,20 @@ public sealed class MessageProcessingLifecycleServiceTests
 
             return Task.FromResult(!ReturnFalseWhenFailingMessage);
         }
+
+        public Task<int> ReencryptAllConversationTitlesAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ReencryptAllMessageContentAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<int> ReencryptAllMessageWarningContentAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 }

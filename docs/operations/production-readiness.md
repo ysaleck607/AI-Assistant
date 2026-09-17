@@ -11,7 +11,7 @@
   - [Structure versionnée](#production-deployment-structure)
   - [Environnements](#production-deployment-environments)
   - [Images immuables](#production-deployment-images)
-  - [Déploiement DEV simulé](#production-deployment-dev)
+  - [Publication des images](#production-deployment-publish)
   - [Déploiement CERTIF réel et manuel](#production-deployment-certification)
   - [Secrets](#production-deployment-secrets)
   - [Échecs et retour à la version précédente](#production-deployment-rollback)
@@ -29,12 +29,13 @@ observables et récupérables sans dépendre d'une procédure implicite.
 <a id="production-components"></a>
 ## Composants
 
-Chaque environnement définit les hôtes, régions, dépendances et responsabilités
-pour Angular, API, worker d'ingestion, webhooks, SQL Server, Azure AI Search et
-stockage distribué. Les données de production restent séparées des tests.
+CERTIF définit les hôtes, la région, les dépendances et les responsabilités
+pour Angular, l'API, le worker d'ingestion, les webhooks, Azure SQL, Azure AI
+Search et le stockage distribué. Ses données restent séparées des tests locaux.
 
-La première étape d'hébergement couvre uniquement DEV et CERTIF. La production
-reste hors périmètre jusqu'à ce que ces deux environnements soient validés.
+L'hébergement Azure conserve uniquement CERTIF. Le développement avec WireMock
+reste local; les changements sont publiés dans ACR après CI, puis déployés à
+CERTIF par déclenchement manuel.
 
 <a id="production-configuration"></a>
 ## Configuration et secrets
@@ -81,9 +82,9 @@ pour la sonde complète. Ces valeurs sont configurables.
 <a id="production-deployment"></a>
 ## Déploiement
 
-Le pipeline construit des artefacts immuables, exécute les tests, applique
-Flyway une seule fois, déploie l'application et vérifie sa santé avant de
-considérer le déploiement comme réussi.
+Le CI exécute les tests et les workflows publient des images immuables. Un
+workflow manuel crée un manifeste de candidat, exécute Flyway, déploie CERTIF
+et vérifie sa santé.
 
 Une migration destructive incompatible avec l'ancienne version interdit un
 retour sûr à la version précédente. Elle doit être découpée en plusieurs
@@ -100,7 +101,6 @@ deploy/
 ├── docker/
 │   ├── api.Dockerfile
 │   ├── worker.Dockerfile
-│   └── wiremock.Dockerfile
 ├── infra/
 │   ├── bootstrap-shared.bicep
 │   ├── bootstrap-environment.bicep
@@ -108,103 +108,66 @@ deploy/
 │   └── modules/
 └── environments/
     ├── shared.bicepparam
-    ├── dev.bootstrap.bicepparam
-    ├── dev.bicepparam
     ├── certif.bootstrap.bicepparam
     └── certif.bicepparam
 
 .github/workflows/
 ├── provision-azure.yml
-├── deploy-dev.yml
+├── publish-images.yml
 ├── promote-certif.yml
 ├── control-certif.yml
 └── release-candidate.yml
 ```
 
-`main.bicep` décrit la structure commune. Les fichiers `.bicepparam`
-contiennent uniquement les différences non sensibles entre DEV et CERTIF.
-Aucun fichier ou workflow PROD n'est créé pendant cette étape.
+`main.bicep` déploie l'environnement CERTIF. Le fichier `.bicepparam` contient
+les paramètres non sensibles de cet environnement. Aucun fichier ou workflow
+PROD n'est créé pendant cette étape.
 
 <a id="production-deployment-environments"></a>
 ### Environnements
 
-DEV et CERTIF possèdent chacun :
+CERTIF possède :
 
-- leur propre base Azure SQL;
-- leur propre configuration;
-- leur propre Key Vault;
-- leur propre identité managée;
-- leurs propres données;
-- leur propre déploiement de l'API et du worker.
+- une base Azure SQL;
+- sa configuration et son Key Vault;
+- une identité managée;
+- ses données;
+- l'API et le worker.
 
-Chaque base utilise aussi son propre serveur logique Azure SQL. Les chaînes de
-connexion et les droits restent séparés : une application ne peut accéder qu'à
-la base de son environnement. Les deux bases utilisent la limite gratuite
-serverless et se mettent en pause automatiquement après une heure d'inactivité.
+La base Azure SQL et ses droits sont dédiés à CERTIF. Elle utilise la limite
+gratuite serverless et se met en pause après une heure d'inactivité.
 
-Le développement local conserve SQL Server dans Docker. Dans Azure, DEV et
-CERTIF utilisent de vraies bases Azure SQL afin de valider Flyway, les
-contraintes, les transactions, les repositories et la persistance après un
-redémarrage.
+Le développement local conserve SQL Server dans Docker. Azure SQL CERTIF sert
+à valider Flyway, les contraintes, les transactions, les repositories et la
+persistance après un redémarrage.
 
 <a id="production-deployment-images"></a>
 ### Images immuables
 
-Un ACR Basic partagé stocke les images de DEV et CERTIF. Son compte
-administrateur est désactivé. Les Container Apps tirent les images avec une
-identité managée ayant seulement le rôle `AcrPull`.
+Un ACR Basic partagé stocke les images de candidats. Son compte administrateur
+est désactivé. Les Container Apps tirent les images avec une identité managée
+ayant seulement le rôle `AcrPull`.
 
-L'API, le worker, Flyway, WireMock et la SPA sont publiés avec un tag basé sur
+L'API, le worker, Flyway et la SPA sont publiés avec un tag basé sur
 le SHA complet du commit :
 
 ```text
 acrassistant<suffix>.azurecr.io/assistant-api:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-worker:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-migrations:sha-<40 caractères>
-acrassistant<suffix>.azurecr.io/assistant-wiremock:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-spa:sha-<40 caractères>
 ```
 
-Une image n'est jamais reconstruite lors de sa promotion. Le même SHA passe de
-DEV à CERTIF. Le tag `latest` ne sert jamais de référence de déploiement.
+Une image n'est jamais reconstruite lors de sa promotion. Le tag `latest` ne
+sert jamais de référence de déploiement.
 
-<a id="production-deployment-dev"></a>
-### Déploiement DEV simulé
+<a id="production-deployment-publish"></a>
+### Publication des images
 
-DEV reprend le comportement de `scripts/start-local-wiremock.sh`. Les services
-externes sont appelés à travers une instance WireMock déployée uniquement dans
-l'environnement DEV.
-
-WireMock simule :
-
-- l'authentification locale avec JWT;
-- l'autorité Microsoft;
-- Microsoft Graph;
-- OpenAI;
-- les embeddings;
-- Azure AI Search.
-
-L'API et le worker utilisent l'adresse interne de WireMock, jamais
-`localhost`. Azure SQL n'est pas simulé : Flyway et l'application utilisent
-la vraie base `AssistantCoreDb` du serveur DEV.
-
-Le mode d'authentification locale, les réponses WireMock et les données DEV
-restent exclusivement fictifs. La configuration doit empêcher le mode simulé
-d'être activé dans CERTIF.
-
-Une pull request exécute la compilation et les tests, sans déployer
-d'environnement. Un push dans `master`, normalement produit par un merge,
-déclenche :
-
-1. la compilation et les tests;
-2. la construction des images immuables;
-3. leur publication avec le SHA du commit;
-4. la migration de `assistantcore-dev`;
-5. le déploiement automatique de DEV;
-6. les appels à `/health/live` et `/health/ready`;
-7. les smoke tests contre les services simulés.
-
-Si Flyway échoue, la nouvelle version de l'API et du worker n'est pas déployée.
+Le développement local conserve WireMock et l'authentification JWT locale.
+Après la réussite du CI sur la branche par défaut, les workflows construisent
+les images API, worker, migrations et SPA avec des tags SHA complets et les
+publient dans ACR. Ils ne déploient pas d'environnement Azure.
 
 <a id="production-deployment-certification"></a>
 ### Déploiement CERTIF réel et manuel
@@ -214,37 +177,34 @@ OpenAI et Azure AI Search. Il utilise la base `AssistantCoreDb` de son serveur
 Azure SQL CERTIF et uniquement des données de certification autorisées.
 
 Le déploiement CERTIF est déclenché manuellement avec `workflow_dispatch`.
-L'utilisateur fournit le tag d'une image déjà déployée et validée dans DEV.
+L'utilisateur fournit les tags immuables API/worker/migrations et SPA publiés après le CI.
 
 Le workflow CERTIF ne reconstruit aucune image. Il :
 
 1. vérifie que le tag immuable existe;
-2. vérifie que l'image a déjà été déployée avec succès dans DEV;
+2. vérifie que les images existent dans ACR;
 3. exécute Flyway sur `assistantcore-certif`;
-4. déploie exactement les mêmes images;
+4. déploie les images par digest;
 5. appelle `/health/live` et `/health/ready`;
-6. exécute les smoke tests avec les véritables intégrations.
+6. vérifie que la SPA répond.
 
 Le déclenchement manuel constitue la décision de promotion. Une protection
 GitHub Environment peut exiger une approbation supplémentaire si l'équipe le
 souhaite.
 
-Le workflow `control-certif.yml` met le worker à une réplique seulement pendant
-une séance de certification et le remet à zéro après. Pour arrêter tout
-l'environnement, il désactive aussi les ingress publics de l'API et de la SPA.
+Le workflow `control-certif.yml` met l'API, la SPA et le worker à une réplique
+au démarrage d'une séance. Il arrête automatiquement le worker après
+30 minutes. L'action d'arrêt remet les répliques à zéro et désactive les ingress
+publics de l'API et de la SPA.
 
-Le workflow `release-candidate.yml` produit un manifeste YAML contenant les
-digests ACR exacts déjà validés en DEV. Ce manifeste est l'entrée d'une future
-promotion PROD; il ne reconstruit aucune image.
+Le workflow `release-candidate.yml` produit un manifeste YAML avec les digests
+ACR exacts des images les plus récemment publiées. Les champs de tag peuvent
+rester vides pour utiliser automatiquement les derniers tags SHA backend et SPA,
+ou être renseignés pour choisir une version précise. Le workflow CERTIF déploie
+ce manifeste sans reconstruire les images.
 
 <a id="production-deployment-secrets"></a>
 ### Secrets
-
-DEV et CERTIF possèdent des Key Vault séparés.
-
-DEV conserve dans son coffre la chaîne Azure SQL et la clé de signature du JWT
-de développement. Les valeurs factices utilisées avec WireMock ne sont jamais
-utilisables dans CERTIF.
 
 CERTIF conserve les véritables secrets Microsoft 365, le certificat PFX
 SharePoint App-Only encodé en Base64 et son mot de passe, ainsi que les secrets
@@ -313,11 +273,11 @@ URIs Entra correspondent exactement aux domaines déployés.
 <a id="production-acceptance"></a>
 ## Critères d'acceptation
 
-- DEV et CERTIF peuvent être recréés depuis une définition versionnée.
-- DEV utilise les services externes simulés et une vraie base Azure SQL.
+- CERTIF peut être recréé depuis une définition versionnée.
+- Le développement avec services simulés reste local.
 - CERTIF utilise ses véritables intégrations et une base Azure SQL séparée.
-- Un merge dans `master` déploie uniquement DEV.
-- CERTIF est déployé manuellement avec le même SHA validé dans DEV.
+- Un merge publie les images sans déployer Azure.
+- CERTIF est déployé manuellement depuis des images immuables publiées dans ACR.
 - Aucun fichier ou workflow PROD n'est créé pendant cette étape.
 - Secrets, migrations, health checks et retour à la version précédente sont automatisés.
 - Alertes et tableaux de bord couvrent les pannes importantes.

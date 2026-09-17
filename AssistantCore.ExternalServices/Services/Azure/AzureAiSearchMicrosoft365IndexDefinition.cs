@@ -15,6 +15,7 @@ public static class AzureAiSearchMicrosoft365IndexDefinition
         new("driveId", "Edm.String", Filterable: true),
         new("driveItemId", "Edm.String", Filterable: true),
         new("documentVersion", "Edm.String", Filterable: true),
+        new("archivePath", "Edm.String", Filterable: true),
         new("chunkNumber", "Edm.Int32", Filterable: true),
         new("url", "Edm.String"),
         new("modifiedAt", "Edm.DateTimeOffset", Filterable: true),

@@ -12,11 +12,19 @@ on:
           - bootstrap-environment
           - deploy-environment
       environment_name:
-        description: Used by environment operations
+        description: Environment to bootstrap or deploy
         required: true
-        default: dev
+        default: certif
         type: choice
-        options: [dev, certif]
+        options: [certif]
+      backend_image_tag:
+        description: Optional backend SHA tag; defaults to the latest complete tag published in ACR
+        required: false
+        type: string
+      spa_image_tag:
+        description: Optional SPA SHA tag; defaults to the latest published tag in ACR
+        required: false
+        type: string
 permissions:
   contents: read
   id-token: write
@@ -35,7 +43,7 @@ jobs:
     name: ${{ inputs.operation }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    environment: ${{ inputs.environment_name }}
+    environment: certif
 
     steps:
       - name: Checkout repository
@@ -70,11 +78,7 @@ jobs:
       - name: Select environment resource group
         if: ${{ inputs.operation != 'bootstrap-shared' }}
         run: |
-          if [ "${{ inputs.environment_name }}" = "dev" ]; then
-            RESOURCE_GROUP="${{ vars.AZURE_DEV_RESOURCE_GROUP }}"
-          else
-            RESOURCE_GROUP="${{ vars.AZURE_CERTIF_RESOURCE_GROUP }}"
-          fi
+          RESOURCE_GROUP="${{ vars.AZURE_CERTIF_RESOURCE_GROUP }}"
           echo "RESOURCE_GROUP=${RESOURCE_GROUP}" >> "$GITHUB_ENV"
 
       - name: Bootstrap environment Key Vault
@@ -100,31 +104,44 @@ jobs:
 
       - name: Validate application image tags
         if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          REQUESTED_BACKEND_TAG: ${{ inputs.backend_image_tag }}
+          REQUESTED_SPA_TAG: ${{ inputs.spa_image_tag }}
         run: |
-          API_IMAGE="$(az containerapp show \
-            --name ca-assistant-api-dev \
-            --resource-group "${{ vars.AZURE_DEV_RESOURCE_GROUP }}" \
-            --query properties.template.containers[0].image \
-            --output tsv)"
-          SPA_IMAGE="$(az containerapp show \
-            --name ca-assistant-spa-dev \
-            --resource-group "${{ vars.AZURE_DEV_RESOURCE_GROUP }}" \
-            --query properties.template.containers[0].image \
-            --output tsv)"
+          ACR_NAME="${{ vars.AZURE_ACR_NAME }}"
+          BACKEND_TAG="$REQUESTED_BACKEND_TAG"
+          SPA_TAG="$REQUESTED_SPA_TAG"
 
-          if ! printf '%s' "$API_IMAGE" | grep -Eq '/assistant-api:sha-[0-9a-f]{40}$'; then
-            echo "The DEV API does not use a valid immutable SHA image." >&2
+          if [ -z "$BACKEND_TAG" ]; then
+            while IFS= read -r candidate; do
+              if ! printf '%s' "$candidate" | grep -Eq '^sha-[0-9a-f]{40}$'; then
+                continue
+              fi
+              if az acr repository show --name "$ACR_NAME" --image "assistant-worker:${candidate}" --only-show-errors >/dev/null \
+                && az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${candidate}" --only-show-errors >/dev/null; then
+                BACKEND_TAG="$candidate"
+                break
+              fi
+            done < <(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository assistant-api \
+              --orderby time_desc \
+              --output tsv)
+          fi
+
+          if [ -z "$SPA_TAG" ]; then
+            SPA_TAG="$(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository assistant-spa \
+              --orderby time_desc \
+              --output tsv \
+              | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
+          fi
+
+          if [ -z "$BACKEND_TAG" ] || [ -z "$SPA_TAG" ]; then
+            echo "No complete published backend or SPA SHA tag was found in ACR." >&2
             exit 1
           fi
-          if ! printf '%s' "$SPA_IMAGE" | grep -Eq '/assistant-spa:sha-[0-9a-f]{40}$'; then
-            echo "The DEV SPA does not use a valid immutable SHA image." >&2
-            exit 1
-          fi
-
-          BACKEND_TAG="${API_IMAGE##*:}"
-          SPA_TAG="${SPA_IMAGE##*:}"
-          echo "BACKEND_TAG=${BACKEND_TAG}" >> "$GITHUB_ENV"
-          echo "SPA_TAG=${SPA_TAG}" >> "$GITHUB_ENV"
 
           for tag in "$BACKEND_TAG" "$SPA_TAG"; do
             if ! printf '%s' "$tag" | grep -Eq '^sha-[0-9a-f]{40}$'; then
@@ -133,18 +150,12 @@ jobs:
             fi
           done
 
-      - name: Validate SQLPad Microsoft Entra configuration
-        if: ${{ inputs.operation == 'deploy-environment' }}
-        env:
-          SQLPAD_CLIENT_ID: ${{ vars.SQLPAD_ENTRA_CLIENT_ID }}
-          SQLPAD_GROUP_ID: ${{ vars.SQLPAD_ALLOWED_GROUP_OBJECT_ID }}
-        run: |
-          for value in "$SQLPAD_CLIENT_ID" "$SQLPAD_GROUP_ID"; do
-            if ! printf '%s' "$value" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
-              echo "SQLPAD_ENTRA_CLIENT_ID and SQLPAD_ALLOWED_GROUP_OBJECT_ID must be valid GUIDs." >&2
-              exit 1
-            fi
-          done
+          az acr repository show --name "$ACR_NAME" --image "assistant-api:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-worker:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-spa:${SPA_TAG}" --only-show-errors >/dev/null
+          echo "BACKEND_TAG=${BACKEND_TAG}" >> "$GITHUB_ENV"
+          echo "SPA_TAG=${SPA_TAG}" >> "$GITHUB_ENV"
 
       - name: Preview and deploy environment
         if: ${{ inputs.operation == 'deploy-environment' }}
@@ -158,9 +169,6 @@ jobs:
             sharedResourceGroupName="$SHARED_RESOURCE_GROUP"
             backendImageTag="$BACKEND_TAG"
             spaImageTag="$SPA_TAG"
-            sqlpadEntraTenantId="${{ vars.AZURE_TENANT_ID }}"
-            sqlpadEntraClientId="${{ vars.SQLPAD_ENTRA_CLIENT_ID }}"
-            sqlpadAllowedGroupObjectId="${{ vars.SQLPAD_ALLOWED_GROUP_OBJECT_ID }}"
           )
 
           az deployment group what-if \

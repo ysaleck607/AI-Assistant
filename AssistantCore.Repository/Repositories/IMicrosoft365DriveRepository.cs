@@ -9,6 +9,15 @@ public interface IMicrosoft365DriveRepository
         string driveId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Bibliotheques SharePoint activees pour l'indexation dans l'organisation. Les OneDrive
+    /// individuels et les listes sont exclus : ils ne sont pas repris par la reindexation.
+    /// </summary>
+    Task<IReadOnlyCollection<Microsoft365Drive>> GetIndexedSharePointDrivesAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyCollection<Microsoft365Drive>>([]);
+
     Task<IReadOnlyCollection<Microsoft365Drive>> GetByOwnerAsync(
         Guid organizationId,
         string ownerUserObjectId,

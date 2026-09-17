@@ -1,6 +1,7 @@
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Repositories;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Usage;
 using Microsoft.Extensions.Options;
 
@@ -11,6 +12,17 @@ public sealed class UsageTrackingService(
     IOptions<UsageOptions> options,
     TimeProvider timeProvider) : IUsageTrackingService
 {
+    public async Task EnsureQuotaAvailableAsync(
+        Guid organizationId,
+        CancellationToken cancellationToken = default)
+    {
+        var usage = await GetCurrentUsageAsync(organizationId, cancellationToken);
+        if (usage.IsExhausted)
+        {
+            throw new OrganizationTokenQuotaExceededException(usage.PeriodEndsAt);
+        }
+    }
+
     public async Task<MessageUsageResponse> RecordConsumptionAsync(
         Guid organizationId,
         Guid assistantMessageId,

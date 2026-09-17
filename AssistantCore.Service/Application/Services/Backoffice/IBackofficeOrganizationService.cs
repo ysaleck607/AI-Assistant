@@ -13,4 +13,19 @@ public interface IBackofficeOrganizationService
     Task<BackofficeOrganizationDetailsDto> GetOrganizationDetailsAsync(
         Guid organizationId,
         CancellationToken cancellationToken = default);
+
+    Task<BackofficeUserListResponse> GetUsersAsync(
+        Guid organizationId,
+        string? search,
+        CancellationToken cancellationToken = default);
+
+    Task<BackofficeUserDetailsDto> GetUserDetailsAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
+
+    Task<BackofficeAccessReevaluationResultDto> ReevaluateUserAccessAsync(
+        Guid organizationId,
+        Guid userId,
+        CancellationToken cancellationToken = default);
 }
