@@ -118,7 +118,29 @@ public sealed class Microsoft365PersistenceConfigurationTests
 
         Assert.NotNull(indexedContentType);
         Assert.Equal(64, indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.AclFingerprint))?.GetMaxLength());
-        Assert.Equal(2048, indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.SiteUrl))?.GetMaxLength());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.SiteUrl))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.Title))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.WebUrl))?.GetValueConverter());
+
+        Assert.IsType<EncryptedStringConverter>(
+            sourceType.FindProperty(nameof(Microsoft365Source.DisplayName))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            sourceType.FindProperty(nameof(Microsoft365Source.WebUrl))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            sourceType.FindProperty(nameof(Microsoft365Source.DeltaLink))?.GetValueConverter());
+
+        Assert.IsType<NullableEncryptedStringConverter>(
+            listItemWorkType.FindProperty(nameof(Microsoft365ListItemWork.WebUrl))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            listItemWorkType.FindProperty(nameof(Microsoft365ListItemWork.FieldsJson))?.GetValueConverter());
+
+        Assert.IsType<NullableEncryptedStringConverter>(
+            documentWorkType.FindProperty(nameof(Microsoft365DocumentWork.Name))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            documentWorkType.FindProperty(nameof(Microsoft365DocumentWork.WebUrl))?.GetValueConverter());
         Assert.Contains(indexedContentType.GetIndexes(), index =>
             HasProperties(index, nameof(Microsoft365IndexedContent.NextAclReconciliationAt)));
         Assert.Contains(indexedContentType.GetIndexes(), index =>

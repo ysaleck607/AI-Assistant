@@ -147,15 +147,22 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
     public async Task<IReadOnlyCollection<Microsoft365Drive>> GetDrivesAsync(
         Guid organizationId,
         string siteId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.Microsoft365Drives
+        CancellationToken cancellationToken = default)
+    {
+        // DisplayName is encrypted at rest with a non-deterministic cipher, so it cannot be
+        // sorted server-side (ORDER BY would sort by ciphertext) - order after materialization.
+        var drives = await dbContext.Microsoft365Drives
             .AsNoTracking()
             .Where(drive =>
                 drive.OrganizationId == organizationId
                 && drive.SiteId == siteId
                 && drive.Kind == Microsoft365SourceKind.SharePointDrive)
-            .OrderBy(drive => drive.DisplayName)
             .ToArrayAsync(cancellationToken);
+
+        return drives
+            .OrderBy(drive => drive.DisplayName, StringComparer.Ordinal)
+            .ToArray();
+    }
 
     public Task<Microsoft365Drive?> FindDriveAsync(
         Guid organizationId,
@@ -297,8 +304,11 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
     public async Task<IReadOnlyCollection<Microsoft365List>> GetListsAsync(
         Guid organizationId,
         string siteId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.Microsoft365Lists
+        CancellationToken cancellationToken = default)
+    {
+        // DisplayName is encrypted at rest with a non-deterministic cipher, so it cannot be
+        // sorted server-side (ORDER BY would sort by ciphertext) - order after materialization.
+        var lists = await dbContext.Microsoft365Lists
             .AsNoTracking()
             .Where(list =>
                 list.OrganizationId == organizationId
@@ -307,9 +317,13 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
                 && list.Microsoft365Connection.OrganizationId == organizationId
                 && list.Microsoft365Connection.OrganizationConnectorId == list.OrganizationConnectorId
                 && list.SiteId == siteId)
-            .OrderBy(list => list.DisplayName)
-            .ThenBy(list => list.ListId)
             .ToListAsync(cancellationToken);
+
+        return lists
+            .OrderBy(list => list.DisplayName, StringComparer.Ordinal)
+            .ThenBy(list => list.ListId, StringComparer.Ordinal)
+            .ToList();
+    }
 
     public Task<Microsoft365List?> FindListAsync(
         Guid organizationId,

@@ -4,8 +4,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssistantCore.Repository.Persistence.Configurations;
 
-public sealed class Microsoft365ListItemWorkConfiguration
-    : IEntityTypeConfiguration<Microsoft365ListItemWork>
+public sealed class Microsoft365ListItemWorkConfiguration(
+    IFieldEncryptor webUrlEncryptor,
+    IFieldEncryptor fieldsJsonEncryptor) : IEntityTypeConfiguration<Microsoft365ListItemWork>
 {
     public void Configure(EntityTypeBuilder<Microsoft365ListItemWork> builder)
     {
@@ -18,7 +19,12 @@ public sealed class Microsoft365ListItemWorkConfiguration
         builder.Property(work => work.ListId).HasMaxLength(400).IsRequired();
         builder.Property(work => work.ListItemId).HasMaxLength(400).IsRequired();
         builder.Property(work => work.ETag).HasMaxLength(1000);
-        builder.Property(work => work.WebUrl).HasMaxLength(2048);
+        builder.Property(work => work.WebUrl)
+            .HasConversion(new NullableEncryptedStringConverter(webUrlEncryptor))
+            .HasColumnType("nvarchar(max)");
+        builder.Property(work => work.FieldsJson)
+            .HasConversion(new NullableEncryptedStringConverter(fieldsJsonEncryptor))
+            .HasColumnType("nvarchar(max)");
         builder.Property(work => work.DeduplicationKey).HasMaxLength(64).IsRequired();
 
         builder.HasOne(work => work.Organization)
