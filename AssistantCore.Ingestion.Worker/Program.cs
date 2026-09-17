@@ -43,7 +43,7 @@ public static class WorkerProgram
 
         builder.Services.AddMicrosoft365WorkerApplication();
         builder.Services.AddMicrosoft365Infrastructure(builder.Configuration);
-        builder.Services.AddPersistenceEncryption();
+        builder.Services.AddPersistenceEncryption(builder.Configuration);
         builder.Services.AddPersistence(builder.Configuration);
         builder.Services.AddHostedService<Microsoft365IngestionWorker>();
         builder.Services.AddHostedService<ConversationPurgeWorker>();

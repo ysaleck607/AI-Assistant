@@ -57,7 +57,7 @@ builder.Services.AddConnectorInfrastructure(builder.Configuration);
 builder.Services.AddMicrosoft365Infrastructure(builder.Configuration);
 builder.Services.AddScoped<IMicrosoft365CurrentUserOneDriveClient, Microsoft365CurrentUserOneDriveClientAdapter>();
 builder.Services.AddDispatcher(Assembly.GetExecutingAssembly());
-builder.Services.AddPersistenceEncryption();
+builder.Services.AddPersistenceEncryption(builder.Configuration);
 builder.Services.AddPersistence(builder.Configuration);
 builder.Services.AddHealthChecks()
     .AddCheck<SqlDatabaseHealthCheck>(SqlDatabaseHealthCheck.Name, tags: ["ready"]);

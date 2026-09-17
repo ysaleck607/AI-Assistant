@@ -2,6 +2,12 @@ targetScope = 'resourceGroup'
 
 param location string = resourceGroup().location
 
+@description('Compte de stockage qui heberge le trousseau de cles Data Protection.')
+param dataProtectionKeysStorageAccountName string = 'assistantcertkeys01'
+
+@description('Cle Key Vault qui chiffre le trousseau Data Protection.')
+param dataProtectionKeyName string = 'dataprotection-key'
+
 @allowed([
   'certif'
 ])
@@ -66,9 +72,19 @@ var certifBffCertificateName = 'assistant-bff-certif.onpremi-cae-assi-2609040357
 var migrationsJobName = 'caj-assistant-migrations-${environmentName}'
 var workloadIdentityName = 'id-assistant-workload-${environmentName}'
 var acrPullIdentityName = 'id-assistant-acr-${environmentName}'
+var dataProtectionKeysContainerName = 'dataprotection-keys'
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
+}
+
+resource dataProtectionKeysStorage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
+  name: dataProtectionKeysStorageAccountName
+}
+
+resource dataProtectionKey 'Microsoft.KeyVault/vaults/keys@2023-07-01' existing = {
+  parent: keyVault
+  name: dataProtectionKeyName
 }
 
 resource foundryAccount 'Microsoft.CognitiveServices/accounts@2025-06-01' existing = {
@@ -101,6 +117,32 @@ resource keyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01
     roleDefinitionId: subscriptionResourceId(
       'Microsoft.Authorization/roleDefinitions',
       '4633458b-17de-408a-b874-0445c86b69e6'
+    )
+  }
+}
+
+resource dataProtectionKeysBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKeysStorage.id, workloadIdentity.id, 'StorageBlobDataContributor')
+  scope: dataProtectionKeysStorage
+  properties: {
+    principalId: workloadIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
+    )
+  }
+}
+
+resource dataProtectionKeyCryptoUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKey.id, workloadIdentity.id, 'KeyVaultCryptoUser')
+  scope: dataProtectionKey
+  properties: {
+    principalId: workloadIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId(
+      'Microsoft.Authorization/roleDefinitions',
+      '12338af0-0e69-4776-bde6-1746d40b5a80'
     )
   }
 }
@@ -261,6 +303,14 @@ var commonApiEnvironmentVariables = [
   {
     name: 'Microsoft365__WebhookBaseUrl'
     value: apiBaseUrl
+  }
+  {
+    name: 'DataProtectionKeyStorage__BlobStorageUri'
+    value: '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
+  }
+  {
+    name: 'DataProtectionKeyStorage__KeyVaultKeyUri'
+    value: dataProtectionKey.properties.keyUriWithVersion
   }
 ]
 
@@ -433,7 +483,7 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
   }
-  dependsOn: [acrPullRole, keyVaultSecretsUser, foundryUser]
+  dependsOn: [acrPullRole, keyVaultSecretsUser, foundryUser, dataProtectionKeysBlobContributor, dataProtectionKeyCryptoUser]
 }
 
 var workerSecrets = [
@@ -508,6 +558,14 @@ var commonWorkerEnvironmentVariables = [
   {
     name: 'Microsoft365__WebhookBaseUrl'
     value: apiBaseUrl
+  }
+  {
+    name: 'DataProtectionKeyStorage__BlobStorageUri'
+    value: '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
+  }
+  {
+    name: 'DataProtectionKeyStorage__KeyVaultKeyUri'
+    value: dataProtectionKey.properties.keyUriWithVersion
   }
 ]
 
@@ -624,7 +682,7 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
   }
-  dependsOn: [acrPullRole, keyVaultSecretsUser]
+  dependsOn: [acrPullRole, keyVaultSecretsUser, dataProtectionKeysBlobContributor, dataProtectionKeyCryptoUser]
 }
 
 resource spa 'Microsoft.App/containerApps@2024-03-01' = {
