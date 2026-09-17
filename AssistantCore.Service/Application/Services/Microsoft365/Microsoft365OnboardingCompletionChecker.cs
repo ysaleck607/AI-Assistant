@@ -58,7 +58,7 @@ public sealed class Microsoft365OnboardingCompletionChecker(
             return false;
         }
 
-        return await sourceRepository.HasIndexedSourceAsync(
+        return await sourceRepository.IsEnvironmentReadyAsync(
             organizationId,
             cancellationToken);
     }

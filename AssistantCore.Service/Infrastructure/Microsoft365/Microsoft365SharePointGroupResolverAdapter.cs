@@ -119,11 +119,25 @@ public sealed class Microsoft365SharePointGroupResolverAdapter(
                         configuration.SharePointCertificatePassword,
                         scope,
                         cancellationToken);
-                var groupIds = await groupClient.GetGroupIdsAsync(
-                    site.WebUrl,
-                    token.AccessToken,
-                    userPrincipalName,
-                    cancellationToken);
+                IReadOnlyCollection<string> groupIds;
+                try
+                {
+                    groupIds = await groupClient.GetGroupIdsAsync(
+                        site.WebUrl,
+                        token.AccessToken,
+                        userPrincipalName,
+                        cancellationToken);
+                }
+                catch (MicrosoftExternalException exception) when (
+                    exception.StatusCode is System.Net.HttpStatusCode.Unauthorized
+                        or System.Net.HttpStatusCode.Forbidden)
+                {
+                    logger?.LogWarning(
+                        exception,
+                        "SharePoint local group resolution was rejected for site {SiteId}; continuing with the other Microsoft 365 ACL sources.",
+                        site.SiteId);
+                    return [];
+                }
 
                 return (IReadOnlyCollection<string>)groupIds
                     .Select(groupId => identityNormalizer.NormalizeSharePointGroupId(

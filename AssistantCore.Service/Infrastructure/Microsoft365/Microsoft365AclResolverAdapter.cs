@@ -230,6 +230,13 @@ public sealed class Microsoft365AclResolverAdapter(
         }
 
         var resolved = (MicrosoftSharePointListItemPermissionReadResult.Resolved)permissionResult;
+        var siteId = contentReference.SiteId;
+        if (siteId is null)
+        {
+            return new Microsoft365AclResolution.Unresolved(
+                Microsoft365AclResolutionFailureReason.UnsupportedPermission);
+        }
+
         var accumulator = new AclAccumulator
         {
             HasUniquePermissions = resolved.InheritanceSource
@@ -252,7 +259,7 @@ public sealed class Microsoft365AclResolverAdapter(
             }
 
             if (!TryAddSharePointPrincipal(
-                    contentReference.SiteId,
+                    siteId,
                     permission.Principal,
                     accumulator))
             {

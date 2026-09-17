@@ -152,8 +152,9 @@ public sealed class AzureAiSearchPassageAclClient
             using var response = await httpClient.SendAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
+                var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
                 throw new AzureAiSearchExternalException(
-                    $"Azure AI Search rejected an indexing batch with status {(int)response.StatusCode}.");
+                    $"Azure AI Search rejected an indexing batch with status {(int)response.StatusCode}: {responseBody}");
             }
 
             var result = await response.Content.ReadFromJsonAsync<IndexDocumentsResponse>(
@@ -162,8 +163,19 @@ public sealed class AzureAiSearchPassageAclClient
                 || result.Value.Count != batch.Length
                 || result.Value.Any(item => !item.Status))
             {
+                var failures = result?.Value?
+                    .Where(item => !item.Status)
+                    .Select(item =>
+                        $"key '{item.Key ?? "unknown"}' returned status {item.StatusCode?.ToString() ?? "unknown"}"
+                            + (string.IsNullOrWhiteSpace(item.ErrorMessage)
+                                ? string.Empty
+                                : $": {item.ErrorMessage}"))
+                    .ToArray();
+                var details = failures is { Length: > 0 }
+                    ? $" Details: {string.Join("; ", failures)}"
+                    : $" Expected {batch.Length} results but received {result?.Value?.Count ?? 0}.";
                 throw new AzureAiSearchExternalException(
-                    "Azure AI Search did not apply every operation in the indexing batch.");
+                    $"Azure AI Search did not apply every operation in the indexing batch.{details}");
             }
         }
     }
@@ -186,5 +198,8 @@ public sealed class AzureAiSearchPassageAclClient
         [property: JsonPropertyName("value")] IReadOnlyCollection<IndexDocumentResult> Value);
 
     private sealed record IndexDocumentResult(
-        [property: JsonPropertyName("status")] bool Status);
+        [property: JsonPropertyName("key")] string? Key,
+        [property: JsonPropertyName("status")] bool Status,
+        [property: JsonPropertyName("statusCode")] int? StatusCode,
+        [property: JsonPropertyName("errorMessage")] string? ErrorMessage);
 }

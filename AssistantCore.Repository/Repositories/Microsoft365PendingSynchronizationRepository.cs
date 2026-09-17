@@ -18,9 +18,11 @@ public sealed class Microsoft365PendingSynchronizationRepository(AssistantCoreDb
             cancellationToken);
         var synchronization = await dbContext.Microsoft365Synchronizations
             .Include(candidate => candidate.Microsoft365Source)
+                .ThenInclude(source => source.Microsoft365Connection)
             .Where(candidate =>
                 (candidate.Microsoft365Source is Microsoft365Drive
-                    || candidate.Microsoft365Source is Microsoft365List)
+                    || candidate.Microsoft365Source is Microsoft365List
+                    || candidate.Microsoft365Source.Kind == Microsoft365SourceKind.OutlookMailbox)
                 && (candidate.Microsoft365Source.SynchronizationLeaseId == null
                     || candidate.Microsoft365Source.SynchronizationLeaseExpiresAt <= startedAt)
                 && (candidate.Status == Microsoft365SynchronizationStatus.Pending
@@ -45,13 +47,7 @@ public sealed class Microsoft365PendingSynchronizationRepository(AssistantCoreDb
         synchronization.AttemptCount++;
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        var organizationId = synchronization.Microsoft365Source switch
-        {
-            Microsoft365Drive drive => drive.OrganizationId,
-            Microsoft365List list => list.OrganizationId,
-            _ => throw new InvalidOperationException(
-                "The Microsoft 365 synchronization source type is not supported.")
-        };
+        var organizationId = synchronization.Microsoft365Source.Microsoft365Connection.OrganizationId;
 
         return new Microsoft365PendingSynchronization(
             synchronization.Id,

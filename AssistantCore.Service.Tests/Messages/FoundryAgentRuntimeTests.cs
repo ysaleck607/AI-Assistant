@@ -142,6 +142,30 @@ public sealed class FoundryAgentRuntimeTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_OutlookMailboxTool_When_RunAsync_Then_ExposesItLikeOtherTools(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Réponse.", "agent@1", 8, 2, 1));
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedOutlookMailboxTool()]));
+
+        // When
+        await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        var request = Assert.Single(client.ReceivedRequests);
+        var tool = Assert.Single(request.Tools);
+        Assert.Equal("QueryOutlookMailbox", tool.Name);
+        Assert.Contains("includeBody=true", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("Never claim that email is unavailable", tool.Description, StringComparison.Ordinal);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_StreamingFoundryResponse_When_RunStreamingAsync_Then_ForwardsAnswerDeltas(
         StartedMessageProcessing processing)
     {
@@ -238,6 +262,28 @@ public sealed class FoundryAgentRuntimeTests
                     fileName = new { type = "string" }
                 },
                 required = new[] { "fileName" },
+                additionalProperties = false
+            }));
+
+    private static AiToolDefinition CreateAuthorizedOutlookMailboxTool() =>
+        new(
+            AiToolNames.QueryOutlookMailbox,
+            "Query Outlook mailbox.",
+            JsonSerializer.SerializeToElement(new
+            {
+                type = "object",
+                properties = new
+                {
+                    query = new { type = new[] { "string", "null" } },
+                    sender = new { type = new[] { "string", "null" } },
+                    recipient = new { type = new[] { "string", "null" } },
+                    scope = new { type = "string" },
+                    dateFrom = new { type = new[] { "string", "null" } },
+                    dateTo = new { type = new[] { "string", "null" } },
+                    includeBody = new { type = "boolean" },
+                    limit = new { type = "integer" }
+                },
+                required = new[] { "query", "sender", "recipient", "scope", "dateFrom", "dateTo", "includeBody", "limit" },
                 additionalProperties = false
             }));
 

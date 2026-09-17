@@ -8,12 +8,23 @@ public interface IMicrosoft365DocumentChunkingService
     IReadOnlyList<Microsoft365SearchPassage> CreateChunks(
         Guid organizationId,
         Guid sourceId,
-        string siteId,
-        string driveId,
+        string? siteId,
+        string? driveId,
         string driveItemId,
         string documentVersion,
         string title,
         string? url,
         DateTimeOffset? modifiedAt,
         IReadOnlyCollection<Microsoft365ExtractedContentUnit> units);
+
+    IReadOnlyList<Microsoft365SearchPassage> CreateTextChunks(
+        Guid organizationId,
+        Guid sourceId,
+        string itemId,
+        string documentVersion,
+        string title,
+        string? url,
+        DateTimeOffset? modifiedAt,
+        string content,
+        string sourceType);
 }

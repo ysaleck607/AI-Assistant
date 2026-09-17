@@ -44,7 +44,8 @@ public sealed class Microsoft365PersistenceConfigurationTests
                 index,
                 nameof(Microsoft365Source.Microsoft365ConnectionId),
                 nameof(Microsoft365Source.Kind),
-                nameof(Microsoft365Source.ExternalResourceId)));
+                nameof(Microsoft365Source.ExternalResourceId),
+                nameof(Microsoft365Source.ParentExternalResourceId)));
 
         Assert.NotNull(siteType);
         Assert.Equal("Microsoft365Site", siteType.GetTableName());

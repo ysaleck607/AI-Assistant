@@ -12,6 +12,10 @@ public static class ToolExecutionErrorCodes
 
     public const string EnterpriseSearchTimeout = "ENTERPRISE_SEARCH_TIMEOUT";
 
+    public const string OutlookMailboxUnavailable = "OUTLOOK_MAILBOX_UNAVAILABLE";
+
+    public const string OutlookMailboxTimeout = "OUTLOOK_MAILBOX_TIMEOUT";
+
     public const string SpreadsheetAnalysisFailed = "SPREADSHEET_ANALYSIS_FAILED";
 
     public const string SpreadsheetAnalysisTimeout = "SPREADSHEET_ANALYSIS_TIMEOUT";

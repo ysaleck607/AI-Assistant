@@ -140,7 +140,10 @@ public sealed class Microsoft365DocumentProcessingService(
             cancellationToken);
         if (extraction.Status != Microsoft365ContentExtractionStatus.Success)
         {
-            throw new Microsoft365ContentExtractionException(extraction.Status);
+            throw new Microsoft365ContentExtractionException(
+                extraction.Status,
+                work.Name,
+                work.MimeType);
         }
 
         var sourceType = source.Kind == Microsoft365SourceKind.OneDrive

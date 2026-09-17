@@ -47,7 +47,19 @@ public sealed class Microsoft365Connector(
             normalizedUserId,
             cancellationToken);
 
-        await Task.WhenAll(entraGroupsTask, sharePointGroupsTask);
+        try
+        {
+            await Task.WhenAll(entraGroupsTask, sharePointGroupsTask);
+        }
+        catch (Exception exception)
+        {
+            logger?.LogError(
+                exception,
+                "Microsoft 365 search failed during group resolution. Entra task status: {EntraTaskStatus}; SharePoint task status: {SharePointTaskStatus}.",
+                entraGroupsTask.Status,
+                sharePointGroupsTask.Status);
+            throw;
+        }
         var groupIds = await entraGroupsTask;
         var sharePointGroupIds = await sharePointGroupsTask;
         logger?.LogInformation(

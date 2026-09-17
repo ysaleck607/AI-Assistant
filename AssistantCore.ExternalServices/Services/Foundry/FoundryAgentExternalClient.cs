@@ -255,7 +255,7 @@ public sealed class FoundryAgentExternalClient
 
             _configurationValidated = true;
             _logger.LogInformation(
-                "Validated Foundry agent {AgentName} version {AgentVersion}: EnterpriseSearch is declared and web search is disabled.",
+                "Validated Foundry agent {AgentName} version {AgentVersion}: all required local function tools are declared and web search is disabled.",
                 _settings.AgentName,
                 _settings.AgentVersion);
         }
@@ -398,8 +398,10 @@ public sealed class FoundryAgentExternalClient
     }
 
     private static IReadOnlyCollection<ChatMessage> CreateCurrentMessage(
-        FoundryAgentExternalRequest request) =>
-        [new ChatMessage(ChatRole.User, request.UserMessage)];
+        FoundryAgentExternalRequest request)
+    {
+        return [new ChatMessage(ChatRole.User, request.UserMessage)];
+    }
 
     private string CreateAgentIdentifier() =>
         $"{_settings.AgentName}@{_settings.AgentVersion}";

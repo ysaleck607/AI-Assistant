@@ -19,6 +19,7 @@ public sealed class Microsoft365SubscriptionClientAdapter(
         string notificationUrl,
         DateTimeOffset expiresAt,
         string clientState,
+        string changeType,
         CancellationToken cancellationToken = default)
     {
         try
@@ -32,6 +33,7 @@ public sealed class Microsoft365SubscriptionClientAdapter(
                 notificationUrl,
                 expiresAt,
                 clientState,
+                changeType,
                 cancellationToken);
             return new Microsoft365SubscriptionResult(result.Id, result.Resource, result.ExpiresAt);
         }

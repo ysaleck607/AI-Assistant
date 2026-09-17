@@ -184,6 +184,7 @@ public sealed class FoundryAgentRuntime(
             var foundryName = tool.Name switch
             {
                 AiToolNames.SearchMicrosoft365 => "EnterpriseSearch",
+                AiToolNames.QueryOutlookMailbox => "QueryOutlookMailbox",
                 AiToolNames.AnalyzeMicrosoft365Spreadsheet => "AnalyzeSpreadsheet",
                 _ => null
             };
@@ -200,9 +201,17 @@ public sealed class FoundryAgentRuntime(
     {
         "EnterpriseSearch" =>
             "Search authorized internal enterprise information when the answer depends on organization-specific data. "
+            + "Use it for semantic research and synthesis across indexed content, including multiple emails or documents. "
+            + "Use QueryOutlookMailbox instead to locate, list or read a specific current mailbox message. "
             + "When an exhaustive spreadsheet calculation is requested without an exact Excel file name, use this tool first "
             + "to identify the exact XLSX or XLSM title, then call AnalyzeSpreadsheet. Do not infer exhaustive spreadsheet "
             + "results from search excerpts.",
+        "QueryOutlookMailbox" =>
+            "Locate, list and read messages in the authenticated user's current Outlook mailbox. Use includeBody=true when "
+            + "the answer depends on exact message content, an amount or another detail; use false when only identifying or "
+            + "listing messages. It can list the newest messages without search terms. Never claim that email is unavailable "
+            + "before calling this tool. Use scope received unless the user explicitly asks about sent mail or all mail. "
+            + "Use limit 5 when no count is requested.",
         "AnalyzeSpreadsheet" =>
             "Use deterministic calculations over every row of an authorized Microsoft 365 XLSX or XLSM file. Always use "
             + "this tool for averages, sums, minima, maxima, counts and exhaustive row filtering; do not use semantic search "
@@ -217,8 +226,7 @@ public sealed class FoundryAgentRuntime(
         && context.IdentityProvider == IdentityProvider.MicrosoftEntraId
         && !string.IsNullOrWhiteSpace(context.ExternalTenantId)
         && context.EntraUserId is not null
-        && context.EntraUserId != Guid.Empty
-        && !string.IsNullOrWhiteSpace(context.UserEmail);
+        && context.EntraUserId != Guid.Empty;
 
     private CancellationTokenSource CreateTurnTimeoutSource(CancellationToken cancellationToken)
     {

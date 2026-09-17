@@ -13,29 +13,83 @@ public sealed class Microsoft365DocumentChunkingService(IOptions<Microsoft365Opt
     public IReadOnlyList<Microsoft365SearchPassage> CreateChunks(
         Guid organizationId,
         Guid sourceId,
-        string siteId,
-        string driveId,
+        string? siteId,
+        string? driveId,
         string driveItemId,
         string documentVersion,
         string title,
         string? url,
         DateTimeOffset? modifiedAt,
-        IReadOnlyCollection<Microsoft365ExtractedContentUnit> units)
+        IReadOnlyCollection<Microsoft365ExtractedContentUnit> units) =>
+        CreateChunks(
+            organizationId,
+            sourceId,
+            siteId,
+            driveId,
+            driveItemId,
+            documentVersion,
+            title,
+            url,
+            modifiedAt,
+            units,
+            sourceType: "sharepoint");
+
+    public IReadOnlyList<Microsoft365SearchPassage> CreateTextChunks(
+        Guid organizationId,
+        Guid sourceId,
+        string itemId,
+        string documentVersion,
+        string title,
+        string? url,
+        DateTimeOffset? modifiedAt,
+        string content,
+        string sourceType) =>
+        CreateChunks(
+            organizationId,
+            sourceId,
+            siteId: null,
+            driveId: null,
+            itemId,
+            documentVersion,
+            title,
+            url,
+            modifiedAt,
+            [new Microsoft365ExtractedContentUnit(
+                Microsoft365ExtractedContentUnitKind.Paragraph,
+                0,
+                content,
+                sourceType)],
+            sourceType);
+
+    private IReadOnlyList<Microsoft365SearchPassage> CreateChunks(
+        Guid organizationId,
+        Guid sourceId,
+        string? siteId,
+        string? driveId,
+        string driveItemId,
+        string documentVersion,
+        string title,
+        string? url,
+        DateTimeOffset? modifiedAt,
+        IReadOnlyCollection<Microsoft365ExtractedContentUnit> units,
+        string sourceType)
     {
         var chunks = new List<Microsoft365SearchPassage>();
         foreach (var group in units.GroupBy(unit => unit.ArchivePath ?? string.Empty))
         {
             chunks.AddRange(CreateChunksForUnits(
                 organizationId, sourceId, siteId, driveId, driveItemId, documentVersion,
-                title, url, modifiedAt, group.OrderBy(unit => unit.Order).ToArray(), group.Key, chunks.Count));
+                title, url, modifiedAt, group.OrderBy(unit => unit.Order).ToArray(), group.Key, chunks.Count,
+                sourceType));
         }
         return chunks;
     }
 
     private IReadOnlyList<Microsoft365SearchPassage> CreateChunksForUnits(
-        Guid organizationId, Guid sourceId, string siteId, string driveId, string driveItemId,
+        Guid organizationId, Guid sourceId, string? siteId, string? driveId, string driveItemId,
         string documentVersion, string title, string? url, DateTimeOffset? modifiedAt,
-        IReadOnlyCollection<Microsoft365ExtractedContentUnit> orderedUnits, string archivePath, int chunkOffset)
+        IReadOnlyCollection<Microsoft365ExtractedContentUnit> orderedUnits, string archivePath, int chunkOffset,
+        string sourceType)
     {
         var maximumCharacters = checked(options.Value.ChunkMaximumTokens * 4);
         var overlapCharacters = checked(options.Value.ChunkOverlapTokens * 4);
@@ -77,6 +131,7 @@ public sealed class Microsoft365DocumentChunkingService(IOptions<Microsoft365Opt
                     chunkNumber,
                     url,
                     modifiedAt,
+                    SourceType: sourceType,
                     ArchivePath: string.IsNullOrEmpty(archivePath) ? null : archivePath));
             }
 

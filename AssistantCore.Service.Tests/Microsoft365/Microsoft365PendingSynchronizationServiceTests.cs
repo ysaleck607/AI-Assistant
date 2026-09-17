@@ -15,7 +15,6 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Given
         var work = CreateWork(
             synchronizationId,
             sourceId,
@@ -25,10 +24,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         var listService = new StubListSynchronizationService();
         var service = CreateService(work, listService: listService, now: now);
 
-        // When
         var processed = await service.ProcessNextAsync(cancellationToken);
 
-        // Then
         Assert.True(processed);
         Assert.Equal((sourceId, synchronizationId), listService.InitialSynchronization);
         Assert.Equal(cancellationToken, listService.ReceivedCancellationToken);
@@ -42,7 +39,6 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Given
         var work = CreateWork(
             synchronizationId,
             sourceId,
@@ -52,10 +48,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         var driveService = new StubDriveSynchronizationService();
         var service = CreateService(work, driveService: driveService, now: now);
 
-        // When
         var processed = await service.ProcessNextAsync(cancellationToken);
 
-        // Then
         Assert.True(processed);
         Assert.Equal((sourceId, synchronizationId), driveService.DeltaSynchronization);
         Assert.Equal(cancellationToken, driveService.ReceivedCancellationToken);
@@ -69,7 +63,6 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Given
         var work = CreateWork(
             synchronizationId,
             sourceId,
@@ -79,13 +72,61 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         var driveService = new StubDriveSynchronizationService();
         var service = CreateService(work, driveService: driveService, now: now);
 
-        // When
         var processed = await service.ProcessNextAsync(cancellationToken);
 
-        // Then
         Assert.True(processed);
         Assert.Equal((sourceId, synchronizationId), driveService.InitialSynchronization);
         Assert.Equal(cancellationToken, driveService.ReceivedCancellationToken);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_APendingOutlookInitialSynchronization_When_ProcessNextAsync_Then_StartsOutlookSynchronization(
+        Guid synchronizationId,
+        Guid sourceId,
+        Guid organizationId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var work = CreateWork(
+            synchronizationId,
+            sourceId,
+            organizationId,
+            Microsoft365SourceKind.OutlookMailbox,
+            Microsoft365SynchronizationType.Initial);
+        var outlookService = new StubOutlookSynchronizationService();
+        var service = CreateService(work, outlookService: outlookService, now: now);
+
+        var processed = await service.ProcessNextAsync(cancellationToken);
+
+        Assert.True(processed);
+        Assert.Equal((sourceId, synchronizationId), outlookService.InitialSynchronization);
+        Assert.Null(outlookService.DeltaSynchronization);
+        Assert.Equal(cancellationToken, outlookService.ReceivedCancellationToken);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_APendingOutlookDeltaSynchronization_When_ProcessNextAsync_Then_StartsOutlookDeltaSynchronization(
+        Guid synchronizationId,
+        Guid sourceId,
+        Guid organizationId,
+        DateTimeOffset now,
+        CancellationToken cancellationToken)
+    {
+        var work = CreateWork(
+            synchronizationId,
+            sourceId,
+            organizationId,
+            Microsoft365SourceKind.OutlookMailbox,
+            Microsoft365SynchronizationType.Delta);
+        var outlookService = new StubOutlookSynchronizationService();
+        var service = CreateService(work, outlookService: outlookService, now: now);
+
+        var processed = await service.ProcessNextAsync(cancellationToken);
+
+        Assert.True(processed);
+        Assert.Equal((sourceId, synchronizationId), outlookService.DeltaSynchronization);
+        Assert.Null(outlookService.InitialSynchronization);
+        Assert.Equal(cancellationToken, outlookService.ReceivedCancellationToken);
     }
 
     [Theory, AutoDomainData]
@@ -96,7 +137,6 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Given
         var work = CreateWork(
             synchronizationId,
             sourceId,
@@ -108,10 +148,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         var cleanupService = new StubIndexCleanupService();
         var service = CreateService(work, cleanupService: cleanupService, now: now);
 
-        // When
         var processed = await service.ProcessNextAsync(cancellationToken);
 
-        // Then
         Assert.True(processed);
         Assert.Equal(
             (organizationId, sourceId, synchronizationId),
@@ -127,7 +165,6 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         DateTimeOffset now,
         CancellationToken cancellationToken)
     {
-        // Given
         var work = CreateWork(
             synchronizationId,
             sourceId,
@@ -142,10 +179,8 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
             outcomeRepository: outcomeRepository,
             now: now);
 
-        // When
         var processed = await service.ProcessNextAsync(cancellationToken);
 
-        // Then
         Assert.True(processed);
         Assert.Equal(Microsoft365SynchronizationStatus.Cancelled, outcomeRepository.Status);
         Assert.Equal(sourceId, outcomeRepository.SourceId);
@@ -156,6 +191,7 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
         Microsoft365PendingSynchronization work,
         StubDriveSynchronizationService? driveService = null,
         StubListSynchronizationService? listService = null,
+        StubOutlookSynchronizationService? outlookService = null,
         StubIndexCleanupService? cleanupService = null,
         StubSourceSynchronizationRepository? outcomeRepository = null,
         DateTimeOffset? now = null) =>
@@ -163,6 +199,7 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
             new StubPendingSynchronizationRepository(work),
             driveService ?? new StubDriveSynchronizationService(),
             listService ?? new StubListSynchronizationService(),
+            outlookService ?? new StubOutlookSynchronizationService(),
             cleanupService ?? new StubIndexCleanupService(),
             outcomeRepository ?? new StubSourceSynchronizationRepository(),
             new FixedTimeProvider(now ?? DateTimeOffset.UtcNow));
@@ -314,6 +351,33 @@ public sealed class Microsoft365PendingSynchronizationServiceTests
                 Microsoft365ListSchemaSynchronizationStatus.Unchanged,
                 null,
                 false));
+    }
+
+    private sealed class StubOutlookSynchronizationService : IMicrosoft365OutlookSynchronizationService
+    {
+        public (Guid SourceId, Guid SynchronizationId)? InitialSynchronization { get; private set; }
+        public (Guid SourceId, Guid SynchronizationId)? DeltaSynchronization { get; private set; }
+        public CancellationToken ReceivedCancellationToken { get; private set; }
+
+        public Task StartInitialSynchronizationAsync(
+            Guid sourceId,
+            Guid synchronizationId,
+            CancellationToken cancellationToken = default)
+        {
+            InitialSynchronization = (sourceId, synchronizationId);
+            ReceivedCancellationToken = cancellationToken;
+            return Task.CompletedTask;
+        }
+
+        public Task StartDeltaSynchronizationAsync(
+            Guid sourceId,
+            Guid synchronizationId,
+            CancellationToken cancellationToken = default)
+        {
+            DeltaSynchronization = (sourceId, synchronizationId);
+            ReceivedCancellationToken = cancellationToken;
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class StubIndexCleanupService : IMicrosoft365IndexCleanupService

@@ -27,8 +27,10 @@ public static class ConnectorServiceCollectionExtensions
         services.AddScoped<IMicrosoft365SearchAccessVerifier, Microsoft365SearchAccessVerifierAdapter>();
         services.AddScoped<IAgenticRetrievalClient, AgenticRetrievalClientAdapter>();
         services.AddScoped<IMicrosoft365Connector, Microsoft365Connector>();
+        services.AddScoped<IMicrosoft365OutlookMailboxQuery, Microsoft365OutlookMailboxQueryAdapter>();
         services.AddScoped<IMicrosoft365SpreadsheetDocumentResolver, Microsoft365SpreadsheetDocumentResolver>();
         services.AddScoped<IAiToolExecutionHandler, Microsoft365SearchToolExecutionHandler>();
+        services.AddScoped<IAiToolExecutionHandler, Microsoft365OutlookMailboxToolExecutionHandler>();
         services.AddScoped<IAiToolExecutionHandler, Microsoft365SpreadsheetAnalysisToolExecutionHandler>();
 
         return services;

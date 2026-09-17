@@ -8,6 +8,7 @@ public sealed class Microsoft365PendingSynchronizationService(
     IMicrosoft365PendingSynchronizationRepository repository,
     IMicrosoft365DriveSynchronizationService driveSynchronizationService,
     IMicrosoft365ListSynchronizationService listSynchronizationService,
+    IMicrosoft365OutlookSynchronizationService outlookSynchronizationService,
     IMicrosoft365IndexCleanupService indexCleanupService,
     IMicrosoft365SourceSynchronizationRepository synchronizationRepository,
     TimeProvider timeProvider) : IMicrosoft365PendingSynchronizationService
@@ -84,6 +85,23 @@ public sealed class Microsoft365PendingSynchronizationService(
                 else
                 {
                     await driveSynchronizationService.StartDeltaSynchronizationAsync(
+                        work.SourceId,
+                        work.SynchronizationId,
+                        cancellationToken);
+                }
+                break;
+
+            case Microsoft365SourceKind.OutlookMailbox:
+                if (work.Type == Microsoft365SynchronizationType.Initial)
+                {
+                    await outlookSynchronizationService.StartInitialSynchronizationAsync(
+                        work.SourceId,
+                        work.SynchronizationId,
+                        cancellationToken);
+                }
+                else
+                {
+                    await outlookSynchronizationService.StartDeltaSynchronizationAsync(
                         work.SourceId,
                         work.SynchronizationId,
                         cancellationToken);

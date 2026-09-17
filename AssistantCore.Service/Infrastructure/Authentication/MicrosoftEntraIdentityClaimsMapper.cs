@@ -46,6 +46,7 @@ public sealed class MicrosoftEntraIdentityClaimsMapper : IIdentityClaimsMapper
             "http://schemas.microsoft.com/identity/claims/objectidentifier"),
         principal.FindFirstValue("name"),
         principal.FindFirstValue("preferred_username")
+            ?? principal.FindFirstValue("upn")
             ?? principal.FindFirstValue(ClaimTypes.Email),
         ReadAppRoles(principal));
 

@@ -19,6 +19,7 @@ public sealed class Microsoft365ConnectionService(
     IMicrosoft365ConsentClient consentClient,
     IMicrosoft365ConsentStateProtector stateProtector,
     IMicrosoft365TechnicalTokenStore tokenStore,
+    IAuthenticationCacheWarmupQueue cacheWarmupQueue,
     IOptions<Microsoft365Options> options,
     TimeProvider timeProvider,
     IAiToolRegistry? toolRegistry = null) : IMicrosoft365ConnectionService
@@ -36,7 +37,8 @@ public sealed class Microsoft365ConnectionService(
         var state = stateProtector.Protect(new Microsoft365ConsentState(
             organization.Id,
             Guid.NewGuid(),
-            expiresAt));
+            expiresAt,
+            member.ExternalUserId));
 
         await connectionRepository.PrepareConsentAsync(
             organization.Id,
@@ -189,6 +191,10 @@ public sealed class Microsoft365ConnectionService(
             validatedTenantId,
             now,
             cancellationToken);
+        cacheWarmupQueue.TryQueue(
+            consentState.OrganizationId,
+            validatedTenantId,
+            consentState.EntraUserId ?? string.Empty);
         toolRegistry?.InvalidateCache(connection.OrganizationId);
         try
         {

@@ -22,6 +22,8 @@ public sealed class Microsoft365Options
 
     public int SharePointGroupCacheMinutes { get; init; } = 5;
 
+    public int OutlookRetentionDays { get; init; } = 180;
+
     public string ConsentCallbackUrl { get; init; } = string.Empty;
 
     public string ConsentSuccessRedirectUrl { get; init; } = string.Empty;

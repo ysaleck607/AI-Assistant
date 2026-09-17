@@ -70,6 +70,11 @@ public sealed class AiToolRegistry(
             }
         }
 
+        if (executableTools.Contains(AiToolNames.QueryOutlookMailbox))
+        {
+            tools.Add(CreateOutlookMailboxQueryTool());
+        }
+
         if (executableTools.Contains(AiToolNames.AnalyzeMicrosoft365Spreadsheet)
             && connector.Sources.Any(source => source.SourceType is
                 Microsoft365SourceType.SharePoint or Microsoft365SourceType.OneDrive))
@@ -87,6 +92,7 @@ public sealed class AiToolRegistry(
             {
                 Microsoft365SourceType.SharePoint => "sharepoint",
                 Microsoft365SourceType.OneDrive => "onedrive",
+                Microsoft365SourceType.Outlook => "outlook",
                 _ => null
             })
             .OfType<string>()
@@ -101,7 +107,7 @@ public sealed class AiToolRegistry(
 
         return new AiToolDefinition(
             AiToolNames.SearchMicrosoft365,
-            "Rechercher dans les contenus Microsoft 365 autorises et deja indexes.",
+            "Rechercher semantiquement et faire une synthese dans les contenus Microsoft 365 autorises et deja indexes, y compris plusieurs documents ou courriels.",
             CreateObjectSchema(
                 new Dictionary<string, object>
                 {
@@ -114,9 +120,9 @@ public sealed class AiToolRegistry(
                         description = "Sources a limiter, ou null pour toutes les sources autorisees."
                     }),
                     ["dateFrom"] = NullableDateProperty(
-                        "Date minimale de modification des fichiers. Ne filtre pas les dates mentionnees dans leur contenu."),
+                        "Date minimale de modification des contenus. Ne filtre pas les dates mentionnees dans leur contenu."),
                     ["dateTo"] = NullableDateProperty(
-                        "Date maximale de modification des fichiers. Ne filtre pas les dates mentionnees dans leur contenu.")
+                        "Date maximale de modification des contenus. Ne filtre pas les dates mentionnees dans leur contenu.")
                 }));
     }
 
@@ -172,6 +178,51 @@ public sealed class AiToolRegistry(
                         items = new { type = "string" },
                         description = "Colonnes a retourner, ou null pour retourner toutes les colonnes."
                     })
+                }));
+
+    private static AiToolDefinition CreateOutlookMailboxQueryTool() =>
+        new(
+            AiToolNames.QueryOutlookMailbox,
+            "Localiser, lister et lire les messages actuels de la boite Outlook de l'utilisateur connecte. "
+            + "Utiliser includeBody=true lorsque la reponse depend du contenu exact d'un message. Une recherche "
+            + "vide permet de lister les messages les plus recents.",
+            CreateObjectSchema(
+                new Dictionary<string, object>
+                {
+                    ["query"] = NullableProperty(new
+                    {
+                        type = "string",
+                        description = "Texte a rechercher dans l'expediteur, l'objet ou le corps, ou null pour un listing."
+                    }),
+                    ["sender"] = NullableProperty(new
+                    {
+                        type = "string",
+                        description = "Nom, alias ou adresse de l'expediteur, ou null."
+                    }),
+                    ["recipient"] = NullableProperty(new
+                    {
+                        type = "string",
+                        description = "Nom, alias ou adresse du destinataire, ou null."
+                    }),
+                    ["scope"] = EnumStringProperty(
+                        "Portee de la boite : received pour les messages recus, sent pour les messages envoyes, all pour tous.",
+                        "received", "sent", "all"),
+                    ["dateFrom"] = NullableDateProperty(
+                        "Date minimale de reception ou d'envoi. Null pour ne pas limiter la date minimale."),
+                    ["dateTo"] = NullableDateProperty(
+                        "Date maximale inclusive de reception ou d'envoi. Null pour ne pas limiter la date maximale."),
+                    ["includeBody"] = new
+                    {
+                        type = "boolean",
+                        description = "True lorsque la reponse exige le contenu exact, un montant ou un detail du message; false pour seulement identifier ou lister les courriels."
+                    },
+                    ["limit"] = new
+                    {
+                        type = "integer",
+                        minimum = 1,
+                        maximum = 20,
+                        description = "Nombre maximal de courriels a retourner. Utiliser 5 par defaut."
+                    }
                 }));
 
     private static JsonElement CreateObjectSchema(IReadOnlyDictionary<string, object> properties) =>

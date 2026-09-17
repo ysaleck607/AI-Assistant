@@ -33,6 +33,23 @@ internal sealed class MicrosoftGraphCollectionReader(HttpClient httpClient)
         return results;
     }
 
+    public async Task<IReadOnlyCollection<TResult>> ReadFirstPageAsync<TItem, TResult>(
+        Uri pageUri,
+        string accessToken,
+        Func<TItem, TResult> map,
+        string resourceName,
+        CancellationToken cancellationToken,
+        IReadOnlyCollection<string>? preferValues = null)
+    {
+        var page = await ReadPageAsync<TItem>(
+            pageUri,
+            accessToken,
+            resourceName,
+            cancellationToken,
+            preferValues);
+        return page.Value.Select(map).ToArray();
+    }
+
     public async IAsyncEnumerable<MicrosoftGraphCollectionPage<TResult>> ReadPagesAsync<TItem, TResult>(
         Uri firstPageUri,
         string accessToken,

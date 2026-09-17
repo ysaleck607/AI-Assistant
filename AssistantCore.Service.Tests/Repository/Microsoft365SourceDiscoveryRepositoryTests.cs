@@ -268,6 +268,102 @@ public sealed class Microsoft365SourceDiscoveryRepositoryTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_AnOutlookMailbox_When_SaveOutlookMailboxActivationAsync_Then_CreatesSourceSynchronizationSubscriptionAndConnectorSource(
+        Guid databaseId,
+        DateTimeOffset requestedAt)
+    {
+        // Given
+        await using var dbContext = CreateDbContext(databaseId);
+        var site = await SeedSiteAsync(dbContext);
+        var connection = await dbContext.Microsoft365Connections
+            .Include(candidate => candidate.OrganizationConnector)
+            .SingleAsync(candidate => candidate.Id == site.Microsoft365ConnectionId);
+        var repository = new Microsoft365SourceDiscoveryRepository(dbContext);
+
+        // When
+        var mailbox = await repository.SaveOutlookMailboxAsync(
+            connection,
+            "user-id",
+            "inbox",
+            "Outlook Inbox",
+            requestedAt,
+            CancellationToken.None);
+        await repository.SaveOutlookMailboxActivationAsync(
+            mailbox,
+            requestedAt,
+            CancellationToken.None);
+
+        // Then
+        Assert.Equal(Microsoft365SourceKind.OutlookMailbox, mailbox.Kind);
+        Assert.Equal("user-id", mailbox.ExternalResourceId);
+        Assert.Equal("inbox", mailbox.ParentExternalResourceId);
+        Assert.True(mailbox.IsIndexed);
+        Assert.Equal(Microsoft365SourceStatus.Enabled, mailbox.Status);
+
+        var synchronization = Assert.Single(await dbContext.Microsoft365Synchronizations.ToArrayAsync());
+        Assert.Equal(mailbox.Id, synchronization.Microsoft365SourceId);
+        Assert.Equal(Microsoft365SynchronizationType.Initial, synchronization.Type);
+        Assert.Equal(Microsoft365SynchronizationStatus.Pending, synchronization.Status);
+
+        var subscription = Assert.Single(await dbContext.Microsoft365Subscriptions.ToArrayAsync());
+        Assert.Equal(mailbox.Id, subscription.Microsoft365SourceId);
+        Assert.Equal(site.OrganizationId, subscription.OrganizationId);
+        Assert.Equal("/users/user-id/mailFolders/inbox/messages", subscription.Resource);
+        Assert.Equal(Microsoft365SubscriptionStatus.Pending, subscription.Status);
+
+        var source = Assert.Single(await dbContext.OrganizationConnectorSources.ToArrayAsync());
+        Assert.Equal(connection.OrganizationConnectorId, source.OrganizationConnectorId);
+        Assert.Equal(Microsoft365SourceType.Outlook, source.SourceType);
+        Assert.Equal(RecordStatus.Active, source.Status);
+        Assert.True(source.IsIndexed);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_MultipleOutlookFoldersForSameMailbox_When_SaveOutlookMailboxAsync_Then_CreatesOneSourcePerFolder(
+        Guid databaseId,
+        DateTimeOffset requestedAt)
+    {
+        // Given
+        await using var dbContext = CreateDbContext(databaseId);
+        var site = await SeedSiteAsync(dbContext);
+        var connection = await dbContext.Microsoft365Connections
+            .Include(candidate => candidate.OrganizationConnector)
+            .SingleAsync(candidate => candidate.Id == site.Microsoft365ConnectionId);
+        var repository = new Microsoft365SourceDiscoveryRepository(dbContext);
+
+        // When
+        var inbox = await repository.SaveOutlookMailboxAsync(
+            connection,
+            "user-id",
+            "inbox",
+            "Outlook - Inbox",
+            requestedAt,
+            CancellationToken.None);
+        var archive = await repository.SaveOutlookMailboxAsync(
+            connection,
+            "user-id",
+            "archive",
+            "Outlook - Archive",
+            requestedAt,
+            CancellationToken.None);
+
+        // Then
+        Assert.NotEqual(inbox.Id, archive.Id);
+        var outlookSources = await dbContext.Microsoft365Sources
+            .Where(source => source.Kind == Microsoft365SourceKind.OutlookMailbox)
+            .ToArrayAsync();
+        Assert.Equal(2, outlookSources.Length);
+        Assert.Contains(
+            outlookSources,
+            source => source.ExternalResourceId == "user-id"
+                && source.ParentExternalResourceId == "inbox");
+        Assert.Contains(
+            outlookSources,
+            source => source.ExternalResourceId == "user-id"
+                && source.ParentExternalResourceId == "archive");
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_AnEnabledList_When_SaveListDeactivationAsync_Then_CancelsIngestionAndRequestsOneCleanup(
         Guid databaseId,
         string microsoftSubscriptionId,

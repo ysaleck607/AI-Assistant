@@ -144,6 +144,7 @@ public sealed class Microsoft365SubscriptionMaintenanceService(
             BuildNotificationUrl(configuration),
             now.AddHours(configuration.SubscriptionLifetimeHours),
             clientState.Value,
+            GetChangeType(subscription),
             cancellationToken);
         EnsureResourceMatches(subscription.Resource, result.Resource);
 
@@ -261,6 +262,11 @@ public sealed class Microsoft365SubscriptionMaintenanceService(
 
     private static string BuildNotificationUrl(Microsoft365Options configuration) =>
         $"{configuration.WebhookBaseUrl.TrimEnd('/')}/webhooks/microsoft-graph";
+
+    private static string GetChangeType(Microsoft365Subscription subscription) =>
+        subscription.Microsoft365Source.Kind == Microsoft365SourceKind.OutlookMailbox
+            ? "created,updated,deleted"
+            : "updated";
 
     private static void EnsureResourceMatches(string expected, string actual)
     {

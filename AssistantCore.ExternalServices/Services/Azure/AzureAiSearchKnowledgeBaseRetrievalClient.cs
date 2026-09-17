@@ -247,6 +247,7 @@ public sealed class AzureAiSearchKnowledgeBaseRetrievalClient
         var documentKey = TryGetString(sourceData, "chunkId")
             ?? TryGetString(sourceData, "key")
             ?? TryGetString(sourceData, "id")
+            ?? TryGetString(sourceData, "docKey")
             ?? referenceId;
         var title = TryGetString(sourceData, "title");
         var content = TryGetString(sourceData, "content");
@@ -308,6 +309,7 @@ public sealed class AzureAiSearchKnowledgeBaseRetrievalClient
             ?? TryGetString(reference, "id");
         var documentKey = TryGetString(reference, "chunkId")
             ?? TryGetString(reference, "key")
+            ?? TryGetString(reference, "docKey")
             ?? referenceId;
         var title = TryGetString(reference, "title");
         var content = TryGetString(reference, "content");

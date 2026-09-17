@@ -6,14 +6,16 @@ namespace AssistantCore.Service.Tests.Messages;
 public sealed class FoundryAgentDefinitionValidatorTests
 {
     [Theory, AutoDomainData]
-    public void Given_EnterpriseSearchWithoutWebSearch_When_Validate_Then_AcceptsDefinition()
+    public void Given_RequiredFunctionsWithoutWebSearch_When_Validate_Then_AcceptsDefinition()
     {
         // Given
         var definition = JsonSerializer.SerializeToElement(new
         {
             tools = new[]
             {
-                new { type = "function", name = "EnterpriseSearch" }
+                new { type = "function", name = "EnterpriseSearch" },
+                new { type = "function", name = "AnalyzeSpreadsheet" },
+                new { type = "function", name = "QueryOutlookMailbox" }
             }
         });
 
@@ -26,7 +28,7 @@ public sealed class FoundryAgentDefinitionValidatorTests
     }
 
     [Theory, AutoDomainData]
-    public void Given_NestedEnterpriseSearchDefinition_When_Validate_Then_AcceptsDefinition()
+    public void Given_NestedRequiredFunctionDefinitions_When_Validate_Then_AcceptsDefinition()
     {
         // Given
         var definition = JsonSerializer.SerializeToElement(new
@@ -37,6 +39,16 @@ public sealed class FoundryAgentDefinitionValidatorTests
                 {
                     type = "function",
                     function = new { name = "EnterpriseSearch" }
+                },
+                new
+                {
+                    type = "function",
+                    function = new { name = "AnalyzeSpreadsheet" }
+                },
+                new
+                {
+                    type = "function",
+                    function = new { name = "QueryOutlookMailbox" }
                 }
             }
         });
@@ -64,6 +76,27 @@ public sealed class FoundryAgentDefinitionValidatorTests
     }
 
     [Theory, AutoDomainData]
+    public void Given_MissingQueryOutlookMailbox_When_Validate_Then_RejectsDefinition()
+    {
+        // Given
+        var definition = JsonSerializer.SerializeToElement(new
+        {
+            tools = new[]
+            {
+                new { type = "function", name = "EnterpriseSearch" },
+                new { type = "function", name = "AnalyzeSpreadsheet" }
+            }
+        });
+
+        // When
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            FoundryAgentDefinitionValidator.Validate(definition));
+
+        // Then
+        Assert.Contains("QueryOutlookMailbox", exception.Message, StringComparison.Ordinal);
+    }
+
+    [Theory, AutoDomainData]
     public void Given_WebSearchAlongsideEnterpriseSearch_When_Validate_Then_RejectsDefinition()
     {
         // Given
@@ -72,6 +105,8 @@ public sealed class FoundryAgentDefinitionValidatorTests
             tools = new[]
             {
                 new { type = "function", name = "EnterpriseSearch" },
+                new { type = "function", name = "AnalyzeSpreadsheet" },
+                new { type = "function", name = "QueryOutlookMailbox" },
                 new { type = "web_search", name = string.Empty }
             }
         });

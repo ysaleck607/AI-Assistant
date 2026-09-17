@@ -64,7 +64,8 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
                 source.Microsoft365Connection.OrganizationId == organizationId
                 && source.IsIndexed
                 && source.Status == Microsoft365SourceStatus.Enabled
-                && source.Kind != Microsoft365SourceKind.SharePointSite);
+                && source.Kind != Microsoft365SourceKind.SharePointSite
+                && source.Kind != Microsoft365SourceKind.OutlookMailbox);
 
         if (!await activeSources.AnyAsync(cancellationToken))
         {
@@ -81,8 +82,7 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
                 activeSourceIds.Contains(work.Microsoft365SourceId)
                 && work.Microsoft365Synchronization.Type == Microsoft365SynchronizationType.Initial
                 && (work.Status == Microsoft365DocumentWorkStatus.Pending
-                    || work.Status == Microsoft365DocumentWorkStatus.Processing
-                    || work.Status == Microsoft365DocumentWorkStatus.TemporaryFailure),
+                    || work.Status == Microsoft365DocumentWorkStatus.Processing),
                 cancellationToken);
         if (hasPendingDocumentWork)
         {
@@ -239,15 +239,26 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
             Microsoft365SourceKind.OneDrive => Microsoft365SourceType.OneDrive,
             _ => throw new InvalidOperationException("Unsupported Microsoft 365 drive source type.")
         };
+        await EnsureConnectorSourceAsync(
+            drive.OrganizationConnectorId,
+            sourceType,
+            cancellationToken);
+    }
+
+    private async Task EnsureConnectorSourceAsync(
+        Guid organizationConnectorId,
+        Microsoft365SourceType sourceType,
+        CancellationToken cancellationToken)
+    {
         var source = await dbContext.OrganizationConnectorSources.SingleOrDefaultAsync(candidate =>
-            candidate.OrganizationConnectorId == drive.OrganizationConnectorId
+            candidate.OrganizationConnectorId == organizationConnectorId
             && candidate.SourceType == sourceType,
             cancellationToken);
         if (source is null)
         {
             dbContext.OrganizationConnectorSources.Add(new OrganizationConnectorSource
             {
-                OrganizationConnectorId = drive.OrganizationConnectorId,
+                OrganizationConnectorId = organizationConnectorId,
                 SourceType = sourceType,
                 Status = RecordStatus.Active,
                 IsIndexed = true
@@ -285,6 +296,116 @@ public sealed class Microsoft365SourceDiscoveryRepository(AssistantCoreDbContext
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<Microsoft365Source> SaveOutlookMailboxAsync(
+        Microsoft365Connection connection,
+        string mailboxUserId,
+        string mailFolderId,
+        string displayName,
+        DateTimeOffset discoveredAt,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(connection);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mailboxUserId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(mailFolderId);
+        ArgumentException.ThrowIfNullOrWhiteSpace(displayName);
+
+        var mailbox = await dbContext.Microsoft365Sources
+            .Include(source => source.Microsoft365Connection)
+            .Include(source => source.Synchronizations)
+            .Include(source => source.Subscriptions)
+            .SingleOrDefaultAsync(source =>
+                source.Microsoft365ConnectionId == connection.Id
+                && source.Kind == Microsoft365SourceKind.OutlookMailbox
+                && source.ExternalResourceId == mailboxUserId
+                && source.ParentExternalResourceId == mailFolderId,
+                cancellationToken);
+
+        if (mailbox is null)
+        {
+            mailbox = new Microsoft365Source
+            {
+                Id = Guid.NewGuid(),
+                Microsoft365ConnectionId = connection.Id,
+                Microsoft365Connection = connection,
+                Kind = Microsoft365SourceKind.OutlookMailbox,
+                ExternalResourceId = mailboxUserId,
+                ParentExternalResourceId = mailFolderId,
+                DisplayName = displayName,
+                Status = Microsoft365SourceStatus.Discovered,
+                IsIndexed = false,
+                DiscoveredAt = discoveredAt
+            };
+            dbContext.Microsoft365Sources.Add(mailbox);
+        }
+        else
+        {
+            mailbox.ParentExternalResourceId = mailFolderId;
+            mailbox.RefreshDiscovery(displayName, webUrl: null);
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return mailbox;
+    }
+
+    public async Task SaveOutlookMailboxActivationAsync(
+        Microsoft365Source mailbox,
+        DateTimeOffset requestedAt,
+        CancellationToken cancellationToken = default)
+    {
+        if (mailbox.Kind != Microsoft365SourceKind.OutlookMailbox)
+        {
+            throw new InvalidOperationException("Only an Outlook mailbox can be activated as an Outlook source.");
+        }
+
+        mailbox.EnableIndexing(requestedAt);
+        await EnsureConnectorSourceAsync(
+            mailbox.Microsoft365Connection.OrganizationConnectorId,
+            Microsoft365SourceType.Outlook,
+            cancellationToken);
+
+        var hasSuccessfulInitialSynchronization = mailbox.Synchronizations.Any(synchronization =>
+            synchronization.Type == Microsoft365SynchronizationType.Initial
+            && synchronization.Status == Microsoft365SynchronizationStatus.Succeeded);
+        var hasRetryableInitialSynchronization = mailbox.Synchronizations.Any(synchronization =>
+            synchronization.Type == Microsoft365SynchronizationType.Initial
+            && synchronization.Status is Microsoft365SynchronizationStatus.Pending
+                or Microsoft365SynchronizationStatus.Running
+                or Microsoft365SynchronizationStatus.TemporaryFailure);
+        if (!hasSuccessfulInitialSynchronization
+            && !hasRetryableInitialSynchronization)
+        {
+            mailbox.Synchronizations.Add(new Microsoft365Synchronization
+            {
+                Id = Guid.NewGuid(),
+                Microsoft365SourceId = mailbox.Id,
+                Type = Microsoft365SynchronizationType.Initial,
+                Status = Microsoft365SynchronizationStatus.Pending,
+                AttemptCount = 0,
+                RequestedAt = requestedAt
+            });
+        }
+
+        if (!mailbox.Subscriptions.Any(subscription =>
+                subscription.Status is Microsoft365SubscriptionStatus.Pending
+                    or Microsoft365SubscriptionStatus.Active
+                    or Microsoft365SubscriptionStatus.RenewalRequired))
+        {
+            mailbox.Subscriptions.Add(new Microsoft365Subscription
+            {
+                Id = Guid.NewGuid(),
+                Microsoft365SourceId = mailbox.Id,
+                OrganizationId = mailbox.Microsoft365Connection.OrganizationId,
+                Resource = $"/users/{Uri.EscapeDataString(mailbox.ExternalResourceId)}/mailFolders/{Uri.EscapeDataString(mailbox.ParentExternalResourceId)}/messages",
+                Status = Microsoft365SubscriptionStatus.Pending,
+                CreatedAt = requestedAt,
+                UpdatedAt = requestedAt
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public Task<Microsoft365Site?> FindSiteAsync(
         Guid organizationId,
         string siteId,

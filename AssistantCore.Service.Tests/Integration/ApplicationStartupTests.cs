@@ -70,6 +70,31 @@ public sealed class ApplicationStartupTests
         Assert.Contains("minimal, low or auto retrieval reasoning", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory, AutoDomainData]
+    public void Given_InvalidOutlookRetention_When_CreateClient_Then_StartupFails(Guid _)
+    {
+        // Given
+        using var factory = new WebApplicationFactory<Program>()
+            .WithWebHostBuilder(builder =>
+            {
+                builder.UseEnvironment(Environments.Development);
+                builder.ConfigureAppConfiguration(configuration =>
+                    configuration.AddIntegrationTestDefaults().AddInMemoryCollection(
+                        new Dictionary<string, string?>
+                        {
+                            ["Microsoft365:ClientSecret"] = "integration-test-secret",
+                            ["Microsoft365:ClientStateHmacKey"] = "integration-test-client-state-hmac-key",
+                            ["Microsoft365:OutlookRetentionDays"] = "0"
+                        }));
+            });
+
+        // When
+        var exception = Assert.Throws<OptionsValidationException>(() => factory.CreateClient());
+
+        // Then
+        Assert.Contains("Microsoft365", exception.Message, StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineAutoDomainData("low")]
     [InlineAutoDomainData("auto")]

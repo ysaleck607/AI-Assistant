@@ -261,6 +261,16 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
                 requestedOrganizationId == organizationId
                 && (hasIndexedSource ?? siteIds.Count > 0));
         }
+
+        public Task<bool> IsEnvironmentReadyAsync(
+            Guid requestedOrganizationId,
+            CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(
+                requestedOrganizationId == organizationId
+                && (hasIndexedSource ?? siteIds.Count > 0));
+        }
         public Task<Microsoft365Site?> FindSiteAsync(Guid organizationId, string siteId, CancellationToken cancellationToken = default) => Task.FromResult<Microsoft365Site?>(null);
         public Task<IReadOnlyCollection<Microsoft365List>> GetListsAsync(Guid organizationId, string siteId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyCollection<Microsoft365List>>([]);
         public Task<Microsoft365List?> FindListAsync(Guid organizationId, string siteId, string listId, CancellationToken cancellationToken = default) => Task.FromResult<Microsoft365List?>(null);

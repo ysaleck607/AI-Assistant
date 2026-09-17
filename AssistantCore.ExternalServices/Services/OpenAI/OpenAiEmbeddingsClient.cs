@@ -39,7 +39,17 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new OpenAiExternalException((int)response.StatusCode);
+            var providerErrorMessage = await response.Content.ReadAsStringAsync(cancellationToken);
+            var retryAfter = response.Headers.RetryAfter;
+            var retryAfterDelay = retryAfter?.Delta
+                ?? (retryAfter?.Date is { } retryAfterAt
+                    ? retryAfterAt - DateTimeOffset.UtcNow
+                    : null);
+            throw new OpenAiExternalException(
+                (int)response.StatusCode,
+                providerErrorMessage,
+                retryAfterDelay is { } delay && delay > TimeSpan.Zero ? delay : null,
+                retryAfter?.Date);
         }
 
         var payload = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken)

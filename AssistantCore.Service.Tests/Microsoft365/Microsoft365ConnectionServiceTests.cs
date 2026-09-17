@@ -483,6 +483,7 @@ public sealed class Microsoft365ConnectionServiceTests
             consentClient,
             stateProtector,
             tokenStore,
+            new NoOpAuthenticationCacheWarmupQueue(),
             Options.Create(new Microsoft365Options
             {
                 ConsentStateLifetimeMinutes = 10,
@@ -490,6 +491,13 @@ public sealed class Microsoft365ConnectionServiceTests
                     "https://app.onpremia.example/microsoft365/consent/success"
             }),
             new FixedTimeProvider(now));
+
+    private sealed class NoOpAuthenticationCacheWarmupQueue : IAuthenticationCacheWarmupQueue
+    {
+        public void TryQueue(Guid organizationId, string? externalTenantId, string entraUserId)
+        {
+        }
+    }
 
     private static IAuthenticateUserService CreateDefaultAuthenticateUserService()
     {

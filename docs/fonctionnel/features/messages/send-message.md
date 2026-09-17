@@ -67,10 +67,13 @@ l’identifiant retourné par Foundry et n’est jamais accepté dans la requêt
 4. Pour une conversation existante, le repository charge au maximum les 20
    derniers messages, puis les remet dans l’ordre chronologique.
 5. `FoundryAgentRuntime` obtient les outils autorisés pour l’organisation. Il
-   expose `EnterpriseSearch` et `AnalyzeSpreadsheet` lorsque l’identité
-   Microsoft du membre est complète.
-6. Le client Foundry envoie l’historique, la question et la définition de ces
-   outils à la version configurée de l’agent.
+   expose `EnterpriseSearch`, `QueryOutlookMailbox` et `AnalyzeSpreadsheet`
+   lorsque l’identité Microsoft du membre est complète et que les sources
+   correspondantes sont configurées.
+6. Le client Foundry envoie l’historique et la question à la version configurée
+   de l’agent. Cette version déclare les outils visibles par le modèle; le
+   backend fournit uniquement les implémentations autorisées pour le tour. Au
+   démarrage, il vérifie que les trois fonctions attendues sont bien déclarées.
 7. Si Foundry appelle `EnterpriseSearch`, le backend valide l’appel et le route
    vers le connecteur Microsoft 365. Foundry ne reçoit jamais de credential ni
    la possibilité de construire lui-même un filtre d’autorisation.
@@ -79,11 +82,19 @@ l’identifiant retourné par Foundry et n’est jamais accepté dans la requêt
 9. Le backend applique encore le seuil de pertinence, une vérification ACL après
    recherche, la normalisation et la limite finale de sources avant de remettre
    les preuves à Foundry.
-10. Pour une analyse tabulaire, le backend localise le classeur indexé, revérifie
+10. Pour une question sur les derniers courriels, une période, un expéditeur ou
+    la présence d'un message, `QueryOutlookMailbox` consulte la boîte de
+    l'utilisateur Entra authentifié. Le modèle ne choisit jamais l'identifiant
+    de la boîte et ne reçoit aucun jeton Graph. La requête est triée par date de
+    réception ou d'envoi et retourne au maximum le nombre demandé. Pour une
+    simple liste, l'outil retourne uniquement les aperçus. Lorsque la réponse
+    exige le contenu exact, il récupère en un seul lot Graph le corps des
+    messages retenus, sans télécharger celui de tous les candidats examinés.
+11. Pour une analyse tabulaire, le backend localise le classeur indexé, revérifie
     ses permissions, le télécharge depuis Microsoft Graph et exécute les calculs
     et filtres sur toutes ses lignes sans transmettre le classeur au modèle.
-11. Foundry peut poursuivre ses appels d’outil, puis produit la réponse finale.
-12. Le backend enregistre atomiquement la réponse, l’identifiant de l’agent,
+12. Foundry peut poursuivre ses appels d’outil, puis produit la réponse finale.
+13. Le backend enregistre atomiquement la réponse, l’identifiant de l’agent,
     l’usage et les sources collectées, marque la question `Completed` et libère
     la place d’exécution.
 

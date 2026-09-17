@@ -42,7 +42,6 @@ public sealed class Microsoft365DriveRepository(AssistantCoreDbContext dbContext
             .ThenBy(drive => drive.DriveId, StringComparer.Ordinal)
             .ToArray();
     }
-
     public async Task<IReadOnlyCollection<Microsoft365Drive>> GetByOwnerAsync(
         Guid organizationId,
         string ownerUserObjectId,

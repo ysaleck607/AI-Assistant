@@ -15,6 +15,7 @@ public sealed class MicrosoftGraphSubscriptionClient(HttpClient httpClient)
         string notificationUrl,
         DateTimeOffset expiresAt,
         string clientState,
+        string changeType,
         CancellationToken cancellationToken = default)
     {
         using var request = CreateAuthorizedRequest(
@@ -26,7 +27,7 @@ public sealed class MicrosoftGraphSubscriptionClient(HttpClient httpClient)
             request.Headers.TryAddWithoutValidation("Prefer", "includesecuritywebhooks");
         }
         request.Content = JsonContent.Create(new CreateSubscriptionRequest(
-            ChangeType: "updated",
+            ChangeType: changeType,
             NotificationUrl: notificationUrl,
             Resource: resource,
             ExpirationDateTime: expiresAt,

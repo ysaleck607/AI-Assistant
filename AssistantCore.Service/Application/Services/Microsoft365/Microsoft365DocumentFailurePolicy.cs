@@ -28,6 +28,14 @@ public static class Microsoft365DocumentFailurePolicy
                 TimeSpan.FromMinutes(retryMinutes));
         }
 
+        if (exception is Microsoft365ExternalException { IsTransient: true } externalException)
+        {
+            return new Microsoft365DocumentFailureDecision(
+                IsPermanent: false,
+                externalException.RetryAfterDelay
+                    ?? TimeSpan.FromMinutes(Math.Min(60, Math.Max(1, Math.Pow(2, attemptCount)) * options.DocumentWorkRetryMinutes)));
+        }
+
         var isPermanent = attemptCount >= options.DocumentWorkMaximumAttempts
             || exception is InvalidDataException or ArgumentException
             || exception is Microsoft365ContentExtractionException { IsTransient: false };

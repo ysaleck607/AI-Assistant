@@ -4,8 +4,11 @@ namespace AssistantCore.Service.Application.Exceptions;
 
 public sealed class Microsoft365ContentExtractionException : Exception
 {
-    public Microsoft365ContentExtractionException(Microsoft365ContentExtractionStatus status)
-        : base($"Document extraction ended with {status}.")
+    public Microsoft365ContentExtractionException(
+        Microsoft365ContentExtractionStatus status,
+        string? fileName = null,
+        string? mimeType = null)
+        : base(CreateMessage(status, fileName, mimeType))
     {
         if (status == Microsoft365ContentExtractionStatus.Success)
         {
@@ -24,4 +27,18 @@ public sealed class Microsoft365ContentExtractionException : Exception
     public bool IsTransient => Status is
         Microsoft365ContentExtractionStatus.OcrUnavailable or
         Microsoft365ContentExtractionStatus.OcrTimeout;
+
+    private static string CreateMessage(
+        Microsoft365ContentExtractionStatus status,
+        string? fileName,
+        string? mimeType)
+    {
+        var document = string.IsNullOrWhiteSpace(fileName)
+            ? "Document"
+            : $"Document '{fileName}'";
+        var format = string.IsNullOrWhiteSpace(mimeType)
+            ? string.Empty
+            : $" (MIME type: {mimeType})";
+        return $"{document} extraction ended with {status}{format}.";
+    }
 }
