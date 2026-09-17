@@ -10,5 +10,11 @@ public enum Microsoft365ContentExtractionStatus
     TooLarge,
     NoIndexableContent,
     OcrUnavailable,
-    OcrTimeout
+    OcrTimeout,
+    ArchiveTooLarge,
+    ArchiveTimeout,
+    EncryptedArchive,
+    CorruptedArchive,
+    UnsafeArchivePath,
+    ArchiveDepthExceeded
 }

@@ -192,6 +192,7 @@ public sealed class AzureAiSearchIndexClient
                     sourceDataFields = new[]
                     {
                         new { name = "chunkId" },
+                        new { name = "archivePath" },
                         new { name = "sourceType" },
                         new { name = "title" },
                         new { name = "content" },

@@ -11,4 +11,5 @@ public sealed record Microsoft365SearchRecord(
     string? Url,
     DateTimeOffset? ModifiedAt,
     double? RelevanceScore,
-    double? SemanticScore = null);
+    double? SemanticScore = null,
+    string? ArchivePath = null);

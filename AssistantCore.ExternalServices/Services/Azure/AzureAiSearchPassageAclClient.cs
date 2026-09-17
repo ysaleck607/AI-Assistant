@@ -70,6 +70,7 @@ public sealed class AzureAiSearchPassageAclClient
                 ["documentVersion"] = passage.DocumentVersion,
                 ["chunkNumber"] = passage.ChunkNumber,
                 ["url"] = passage.Url,
+                ["archivePath"] = passage.ArchivePath,
                 ["modifiedAt"] = passage.ModifiedAt,
                 ["contentVector"] = passage.ContentVector,
                 ["allowedUserIds"] = passage.AllowedUserIds,

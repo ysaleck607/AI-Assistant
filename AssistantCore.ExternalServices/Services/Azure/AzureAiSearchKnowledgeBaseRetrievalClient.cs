@@ -269,7 +269,8 @@ public sealed class AzureAiSearchKnowledgeBaseRetrievalClient
             TryGetString(sourceData, "driveItemId"),
             TryGetString(sourceData, "url"),
             TryGetDateTimeOffset(sourceData, "modifiedAt"),
-            TryGetDouble(reference, "rerankerScore") ?? TryGetDouble(reference, "score"));
+            TryGetDouble(reference, "rerankerScore") ?? TryGetDouble(reference, "score"),
+            TryGetString(sourceData, "archivePath"));
     }
 
     private static IReadOnlyCollection<AzureAiSearchKnowledgeBaseReference> ParseExtractedReferences(
@@ -329,7 +330,8 @@ public sealed class AzureAiSearchKnowledgeBaseRetrievalClient
             TryGetString(reference, "driveItemId"),
             TryGetString(reference, "url"),
             TryGetDateTimeOffset(reference, "modifiedAt"),
-            TryGetDouble(reference, "rerankerScore") ?? TryGetDouble(reference, "score"));
+            TryGetDouble(reference, "rerankerScore") ?? TryGetDouble(reference, "score"),
+            TryGetString(reference, "archivePath"));
     }
 
     private static IReadOnlyCollection<AzureAiSearchKnowledgeBaseActivity> ReadActivity(
