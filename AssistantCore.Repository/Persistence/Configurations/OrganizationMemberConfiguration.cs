@@ -32,13 +32,15 @@ public sealed class OrganizationMemberConfiguration(
             .IsRequired();
 
         // Index aveugle HMAC : permet une recherche exacte sur l'email sans jamais le
-        // dechiffrer. Jamais unique - deux identites externes distinctes peuvent
-        // legitimement partager un email (voir #31) ; seul (OrganizationId,
-        // IdentityProvider, ExternalUserId) identifie un membre.
+        // dechiffrer. Unique par organisation - decision de l'equipe (2026-09-18) de
+        // garder l'email unique pour ne pas complexifier les permissions avant le
+        // deploiement client ; le cas d'un invite externe partageant un email avec un
+        // membre interne (voir #31/#73) est reporte a plus tard, pas encore supporte.
         builder.Property(member => member.EmailLookupHash)
             .HasMaxLength(64);
 
-        builder.HasIndex(member => new { member.OrganizationId, member.EmailLookupHash });
+        builder.HasIndex(member => new { member.OrganizationId, member.EmailLookupHash })
+            .IsUnique();
 
         builder.Property(member => member.IdentityProvider)
             .HasConversion<string>()

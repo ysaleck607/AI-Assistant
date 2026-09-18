@@ -58,7 +58,7 @@ public sealed class OrganizationMemberQueriesTests
         var member = CreateMember(organizationId, externalUserId, "member@contoso.test");
 
         // An email conflict mentions OrganizationId, but never IdentityProvider or ExternalUserId.
-        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_Email");
+        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_EmailLookupHash");
 
         await using var throwingContext = new ThrowOnceDbContext(options, emailConflict);
         var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
@@ -70,30 +70,36 @@ public sealed class OrganizationMemberQueriesTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AGuestAndAnInternalMemberSharingAnEmail_When_CreateMember_Then_BothAreCreatedAsDistinctRows(
+    public async Task Given_ASecondMemberWithAnAlreadyUsedEmail_When_CreateMember_Then_TheConflictPropagates(
         Guid databaseId,
         Guid organizationId,
         string internalMemberExternalUserId,
         string guestExternalUserId,
         string sharedEmail)
     {
-        // Given
+        // Given: team decision (2026-09-18) - email stays unique per organization to
+        // avoid permission complexity before the client deployment. A guest sharing an
+        // email with an internal member (see #31/#73) is deferred, not supported yet -
+        // this is the conflict that scenario now produces, not silently swallowed.
         var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
             .UseInMemoryDatabase(databaseId.ToString())
             .Options;
         var internalMember = CreateMember(organizationId, internalMemberExternalUserId, sharedEmail);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(internalMember);
+            await seedContext.SaveChangesAsync();
+        }
+
         var guestMember = CreateMember(organizationId, guestExternalUserId, sharedEmail);
+        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_EmailLookupHash");
+        await using var throwingContext = new ThrowOnceDbContext(options, emailConflict);
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
-        // When
-        await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
-        var createdInternalMember = await queries.CreateMember(internalMember, CancellationToken.None);
-        var createdGuestMember = await queries.CreateMember(guestMember, CancellationToken.None);
-
-        // Then
-        Assert.Equal(internalMember.Id, createdInternalMember.Id);
-        Assert.Equal(guestMember.Id, createdGuestMember.Id);
-        Assert.NotEqual(createdInternalMember.Id, createdGuestMember.Id);
+        // When / Then
+        var thrownException = await Assert.ThrowsAsync<DbUpdateException>(
+            () => queries.CreateMember(guestMember, CancellationToken.None));
+        Assert.Same(emailConflict, thrownException);
     }
 
     [Theory, AutoDomainData]

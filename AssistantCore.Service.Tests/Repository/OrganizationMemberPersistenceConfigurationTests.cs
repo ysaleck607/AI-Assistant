@@ -39,7 +39,7 @@ public sealed class OrganizationMemberPersistenceConfigurationTests
     }
 
     [Theory, AutoDomainData]
-    public void Given_OrganizationMemberModel_When_InspectingConfiguration_Then_NameAndEmailAreEncryptedAndTheBlindIndexIsNotUnique(
+    public void Given_OrganizationMemberModel_When_InspectingConfiguration_Then_NameAndEmailAreEncryptedAndTheBlindIndexIsUnique(
         Guid databaseId)
     {
         // Given
@@ -58,12 +58,12 @@ public sealed class OrganizationMemberPersistenceConfigurationTests
         Assert.IsType<EncryptedStringConverter>(
             memberType.FindProperty(nameof(OrganizationMember.Email))?.GetValueConverter());
 
-        // Never unique - two distinct external identities may legitimately share an
-        // email within the same organization (see #31); the blind index only speeds
-        // up an exact-match lookup, it never enforces identity.
+        // Team decision (2026-09-18): keep email unique per organization to avoid
+        // permission complexity ahead of the client deployment. A guest sharing an
+        // email with an internal member (see #31/#73) is deferred, not supported yet.
         Assert.Contains(
             memberType.GetIndexes(),
-            index => !index.IsUnique
+            index => index.IsUnique
                 && HasProperties(
                     index,
                     nameof(OrganizationMember.OrganizationId),
