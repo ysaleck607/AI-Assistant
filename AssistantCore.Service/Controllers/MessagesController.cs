@@ -19,7 +19,7 @@ public sealed class MessagesController(IDispatcher dispatcher) : ControllerBase
     [SwaggerResponse(StatusCodes.Status200OK, "Message handled successfully.", typeof(SendMessageResponse))]
     [SwaggerResponse(StatusCodes.Status400BadRequest, "Invalid request.")]
     [SwaggerResponse(StatusCodes.Status401Unauthorized, "Authentication required.")]
-    [SwaggerResponse(StatusCodes.Status429TooManyRequests, "The organization's token quota is exhausted.")]
+    [SwaggerResponse(StatusCodes.Status429TooManyRequests, "The request rate limit or organization token quota is exhausted.")]
     public async Task<ActionResult<SendMessageResponse>> SendMessage(
         [FromBody] SendMessageRequest request,
         CancellationToken cancellationToken)
@@ -49,26 +49,25 @@ public sealed class MessagesController(IDispatcher dispatcher) : ControllerBase
     [SwaggerResponse(StatusCodes.Status200OK, "Server-Sent Events containing the assistant response.")]
     [SwaggerResponse(StatusCodes.Status400BadRequest, "Invalid request.")]
     [SwaggerResponse(StatusCodes.Status401Unauthorized, "Authentication required.")]
+    [SwaggerResponse(StatusCodes.Status429TooManyRequests, "The request rate limit or organization token quota is exhausted.")]
     public async Task SendMessageStream(
         [FromBody] SendMessageRequest request,
         CancellationToken cancellationToken)
     {
-        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
-        Response.ContentType = "text/event-stream; charset=utf-8";
-        Response.Headers.CacheControl = "no-cache, no-transform";
-        Response.Headers.Append("X-Accel-Buffering", "no");
-
-        // Commit the SSE response before starting the potentially long-running
-        // agent turn so browsers and intermediaries can begin consuming the body.
-        await Response.StartAsync(cancellationToken);
-        await Response.WriteAsync(": connected\n\n", cancellationToken);
-        await Response.Body.FlushAsync(cancellationToken);
-
         var events = await dispatcher.SendAsync(
             new SendMessageStreamCommand(
                 request.ConversationId,
                 request.Message),
             cancellationToken);
+
+        HttpContext.Features.Get<IHttpResponseBodyFeature>()?.DisableBuffering();
+        Response.ContentType = "text/event-stream; charset=utf-8";
+        Response.Headers.CacheControl = "no-cache, no-transform";
+        Response.Headers.Append("X-Accel-Buffering", "no");
+
+        await Response.StartAsync(cancellationToken);
+        await Response.WriteAsync(": connected\n\n", cancellationToken);
+        await Response.Body.FlushAsync(cancellationToken);
 
         await foreach (var streamEvent in events.WithCancellation(cancellationToken))
         {

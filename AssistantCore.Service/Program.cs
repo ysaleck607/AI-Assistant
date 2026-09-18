@@ -8,6 +8,7 @@ using AssistantCore.Service.Infrastructure.Microsoft365;
 using AssistantCore.Service.Infrastructure.Health;
 using AssistantCore.Service.Infrastructure.Foundry;
 using AssistantCore.Service.Infrastructure.Persistence;
+using AssistantCore.Service.Infrastructure.RateLimiting;
 using AssistantCore.Service.Middleware;
 using AssistantCore.Repository.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
@@ -51,6 +52,7 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 builder.Services.AddApplication(builder.Configuration);
+builder.Services.AddRateLimitingInfrastructure();
 builder.Services.AddAuthenticationInfrastructure(builder.Configuration);
 builder.Services.AddFoundryAgentInfrastructure(builder.Configuration);
 builder.Services.AddConnectorInfrastructure(builder.Configuration);

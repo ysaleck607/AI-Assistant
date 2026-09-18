@@ -17,6 +17,7 @@ using AssistantCore.Service.Application.Services.Messages.Tools;
 using AssistantCore.Service.Application.Services.Messages.Validation;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using AssistantCore.Service.Application.Services.Organizations;
+using AssistantCore.Service.Application.Services.RateLimiting;
 using AssistantCore.Service.Application.Services.TenantAdmission;
 using AssistantCore.Service.Application.Services.Usage;
 using Microsoft.Extensions.Configuration;
@@ -84,7 +85,15 @@ public static class ServiceCollectionExtensions
                 options => options.DefaultMonthlyTokenLimit > 0,
                 $"{UsageOptions.SectionName}:{nameof(UsageOptions.DefaultMonthlyTokenLimit)} must be greater than zero.")
             .ValidateOnStart();
+        services.AddOptions<RateLimitingOptions>()
+            .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
+            .Validate(
+                options => options.MemberMessagesPerMinute > 0
+                    && options.OrganizationMessagesPerMinute > 0,
+                $"{RateLimitingOptions.SectionName} message limits must be greater than zero.")
+            .ValidateOnStart();
         services.AddScoped<IUsageTrackingService, UsageTrackingService>();
+        services.AddScoped<IMessageRateLimitService, MessageRateLimitService>();
         services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
         services.AddScoped<ISendMessageCommandValidator, SendMessageCommandValidator>();
         services.AddSingleton<IConversationCursorCodec, ConversationCursorCodec>();

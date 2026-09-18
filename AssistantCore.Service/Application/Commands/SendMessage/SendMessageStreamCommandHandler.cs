@@ -11,31 +11,39 @@ using AssistantCore.Service.Application.Services.Messages.Lifecycle;
 using AssistantCore.Service.Application.Services.Messages.Responses;
 using AssistantCore.Service.Application.Services.Messages.Streaming;
 using AssistantCore.Service.Application.Services.Messages.Validation;
+using AssistantCore.Service.Application.Services.RateLimiting;
 
 namespace AssistantCore.Service.Application.Commands.SendMessage;
 
 public sealed class SendMessageStreamCommandHandler(
     ISendMessageCommandValidator validator,
     IMessageUserContextService userContextService,
+    IMessageRateLimitService rateLimitService,
     IMessageProcessingLifecycleService lifecycleService,
     IAgentRuntime agentRuntime,
     ISendMessageResponseFactory responseFactory,
     IMessageStreamErrorReporter errorReporter)
     : IRequestHandler<SendMessageStreamCommand, IAsyncEnumerable<SendMessageStreamEvent>>
 {
-    public Task<IAsyncEnumerable<SendMessageStreamEvent>> HandleAsync(
+    public async Task<IAsyncEnumerable<SendMessageStreamEvent>> HandleAsync(
         SendMessageStreamCommand request,
         CancellationToken cancellationToken)
     {
-        var channel = Channel.CreateUnbounded<SendMessageStreamEvent>();
-        _ = ProduceAsync(request, channel.Writer, cancellationToken);
+        var validatedCommand = await validator.ValidateAsync(
+            new SendMessageCommand(request.ConversationId, request.Message),
+            cancellationToken);
+        var userContext = await userContextService.GetCurrentAsync(cancellationToken);
+        await rateLimitService.EnsureAllowedAsync(userContext, cancellationToken);
 
-        return Task.FromResult<IAsyncEnumerable<SendMessageStreamEvent>>(
-            channel.Reader.ReadAllAsync(cancellationToken));
+        var channel = Channel.CreateUnbounded<SendMessageStreamEvent>();
+        _ = ProduceAsync(validatedCommand, userContext, channel.Writer, cancellationToken);
+
+        return channel.Reader.ReadAllAsync(cancellationToken);
     }
 
     private async Task ProduceAsync(
-        SendMessageStreamCommand request,
+        SendMessageCommand validatedCommand,
+        MessageUserContext userContext,
         ChannelWriter<SendMessageStreamEvent> writer,
         CancellationToken cancellationToken)
     {
@@ -43,10 +51,6 @@ public sealed class SendMessageStreamCommandHandler(
 
         try
         {
-            var validatedCommand = await validator.ValidateAsync(
-                new SendMessageCommand(request.ConversationId, request.Message),
-                cancellationToken);
-            var userContext = await userContextService.GetCurrentAsync(cancellationToken);
             processing = await lifecycleService.StartAsync(
                 validatedCommand.ConversationId,
                 validatedCommand.Message,
@@ -86,7 +90,7 @@ public sealed class SendMessageStreamCommandHandler(
             var errorCode = GetErrorCode(exception);
             errorReporter.Report(
                 exception,
-                processing?.ConversationId ?? request.ConversationId,
+                processing?.ConversationId ?? validatedCommand.ConversationId,
                 processing?.UserMessageId,
                 errorCode);
             await FailProcessingAsync(processing, wasCancelled: false);

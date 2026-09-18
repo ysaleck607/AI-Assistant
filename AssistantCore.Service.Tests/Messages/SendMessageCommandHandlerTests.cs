@@ -11,6 +11,7 @@ using AssistantCore.Service.Application.Services.Messages.Lifecycle;
 using AssistantCore.Service.Application.Services.Messages.Responses;
 using AssistantCore.Service.Application.Services.Messages.Streaming;
 using AssistantCore.Service.Application.Services.Messages.Validation;
+using AssistantCore.Service.Application.Services.RateLimiting;
 
 namespace AssistantCore.Service.Tests.Messages;
 
@@ -34,6 +35,7 @@ public sealed class SendMessageCommandHandlerTests
         var handler = new SendMessageCommandHandler(
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
             lifecycle,
             agentRuntime,
             new StubResponseFactory(operations, expectedResponse));
@@ -47,6 +49,7 @@ public sealed class SendMessageCommandHandlerTests
             [
                 "Validate",
                 "ResolveUser",
+                "RateLimit",
                 "StartProcessing",
                 "RunAgent",
                 "CompleteProcessing",
@@ -193,6 +196,7 @@ public sealed class SendMessageCommandHandlerTests
         var handler = new SendMessageStreamCommandHandler(
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
             lifecycle,
             new StubAgentRuntime(
                 operations,
@@ -232,6 +236,7 @@ public sealed class SendMessageCommandHandlerTests
         var handler = new SendMessageCommandHandler(
             new StubCommandValidator(operations, expectedException),
             new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
             new StubLifecycleService(operations, processing, completedProcessing),
             new StubAgentRuntime(operations, agentTurnResult),
             new StubResponseFactory(operations, response));
@@ -243,6 +248,35 @@ public sealed class SendMessageCommandHandlerTests
         // Then
         Assert.Same(expectedException, exception);
         Assert.Equal(["Validate"], operations);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ARateLimitedMember_When_HandleAsync_Then_StopsBeforeStartingProcessing(
+        SendMessageCommand command,
+        MessageUserContext userContext,
+        StartedMessageProcessing processing,
+        AgentTurnResult agentTurnResult,
+        CompletedMessageProcessing completedProcessing,
+        SendMessageResponse response)
+    {
+        // Given
+        var operations = new List<string>();
+        var expectedException = new RequestRateLimitExceededException(30);
+        var handler = new SendMessageCommandHandler(
+            new StubCommandValidator(operations),
+            new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations, expectedException),
+            new StubLifecycleService(operations, processing, completedProcessing),
+            new StubAgentRuntime(operations, agentTurnResult),
+            new StubResponseFactory(operations, response));
+
+        // When
+        var exception = await Record.ExceptionAsync(() =>
+            handler.HandleAsync(command, CancellationToken.None));
+
+        // Then
+        Assert.Same(expectedException, exception);
+        Assert.Equal(["Validate", "ResolveUser", "RateLimit"], operations);
     }
 
     [Theory, AutoDomainData]
@@ -261,6 +295,7 @@ public sealed class SendMessageCommandHandlerTests
         var handler = new SendMessageCommandHandler(
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
             lifecycle,
             new StubAgentRuntime(operations, agentTurnResult, expectedException),
             new StubResponseFactory(operations, response));
@@ -272,7 +307,7 @@ public sealed class SendMessageCommandHandlerTests
         // Then
         Assert.Same(expectedException, exception);
         Assert.Equal(
-            ["Validate", "ResolveUser", "StartProcessing", "RunAgent"],
+            ["Validate", "ResolveUser", "RateLimit", "StartProcessing", "RunAgent"],
             operations);
         Assert.Equal("message_generation_failed", lifecycle.ReceivedFailure?.ErrorCode);
     }
@@ -287,6 +322,7 @@ public sealed class SendMessageCommandHandlerTests
         new(
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
             new StubLifecycleService(operations, processing, completedProcessing),
             agentRuntime,
             new StubResponseFactory(operations, response),
@@ -327,6 +363,21 @@ public sealed class SendMessageCommandHandlerTests
         {
             operations.Add("ResolveUser");
             return Task.FromResult(context);
+        }
+    }
+
+    private sealed class StubMessageRateLimitService(
+        List<string> operations,
+        Exception? exception = null) : IMessageRateLimitService
+    {
+        public Task EnsureAllowedAsync(
+            MessageUserContext userContext,
+            CancellationToken cancellationToken)
+        {
+            operations.Add("RateLimit");
+            return exception is null
+                ? Task.CompletedTask
+                : Task.FromException(exception);
         }
     }
 

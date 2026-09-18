@@ -18,7 +18,7 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
     {
         var usesAzureOpenAi = !string.IsNullOrWhiteSpace(deploymentName);
         var requestUri = usesAzureOpenAi
-            ? $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deploymentName)}/embeddings?api-version={Uri.EscapeDataString(apiVersion)}"
+            ? $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deploymentName!)}/embeddings?api-version={Uri.EscapeDataString(apiVersion)}"
             : $"{endpoint.TrimEnd('/')}/embeddings";
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
