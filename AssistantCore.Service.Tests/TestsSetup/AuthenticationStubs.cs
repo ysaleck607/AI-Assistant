@@ -272,6 +272,11 @@ internal sealed class StubOrganizationMemberQueries : IOrganizationMemberQueries
         ReceivedCancellationToken = cancellationToken;
         return Task.CompletedTask;
     }
+
+    public Task<int> ReencryptAllMembersAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(0);
 }
 
 internal sealed class StubTimeProvider : TimeProvider

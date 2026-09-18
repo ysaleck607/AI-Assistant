@@ -1,4 +1,5 @@
 using AssistantCore.Repository.Persistence;
+using AssistantCore.Service.Application.Configuration;
 using Azure.Identity;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
@@ -41,6 +42,17 @@ public static class PersistenceEncryptionServiceCollectionExtensions
         }
 
         services.AddSingleton<IFieldEncryptorFactory, DataProtectionFieldEncryptorFactory>();
+
+        // The blind index key must stay stable over time, unlike Data Protection keys
+        // which rotate by design - rotating it would invalidate every index already
+        // computed. It is configured and validated separately for that reason.
+        services.AddOptions<MemberPiiOptions>()
+            .Bind(configuration.GetSection(MemberPiiOptions.SectionName))
+            .Validate(
+                options => options.EmailLookupHmacKey.Length >= 32,
+                $"{MemberPiiOptions.SectionName}:{nameof(MemberPiiOptions.EmailLookupHmacKey)} must be at least 32 characters.")
+            .ValidateOnStart();
+        services.AddSingleton<IEmailBlindIndexHasher, HmacEmailBlindIndexHasher>();
 
         return services;
     }

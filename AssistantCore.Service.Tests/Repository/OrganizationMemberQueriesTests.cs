@@ -2,7 +2,10 @@ using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Persistence;
 using AssistantCore.Repository.Queries;
+using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Tests.Repository;
 
@@ -31,7 +34,7 @@ public sealed class OrganizationMemberQueriesTests
             "IX_OrganizationMember_OrganizationId_IdentityProvider_ExternalUserId");
 
         await using var throwingContext = new ThrowOnceDbContext(options, identityConflict);
-        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.CreateMember(losingMember, CancellationToken.None);
@@ -58,7 +61,7 @@ public sealed class OrganizationMemberQueriesTests
         var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_Email");
 
         await using var throwingContext = new ThrowOnceDbContext(options, emailConflict);
-        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When / Then
         var thrownException = await Assert.ThrowsAsync<DbUpdateException>(
@@ -83,7 +86,7 @@ public sealed class OrganizationMemberQueriesTests
 
         // When
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
         var createdInternalMember = await queries.CreateMember(internalMember, CancellationToken.None);
         var createdGuestMember = await queries.CreateMember(guestMember, CancellationToken.None);
 
@@ -115,7 +118,7 @@ public sealed class OrganizationMemberQueriesTests
 
         // When
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
         await queries.RefreshContactDetailsAsync(member.Id, newName, newEmail, CancellationToken.None);
 
         // Then
@@ -151,7 +154,7 @@ public sealed class OrganizationMemberQueriesTests
 
         // When
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
         await queries.RefreshContactDetailsAsync(firstOrganizationMember.Id, newName, newEmail, CancellationToken.None);
 
         // Then
@@ -183,11 +186,108 @@ public sealed class OrganizationMemberQueriesTests
         // When / Then - a SaveChangesAsync on a context with no tracked changes is a no-op,
         // so this only proves the guard skips the write; ThrowOnceDbContext would over-assert.
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
         await queries.RefreshContactDetailsAsync(member.Id, member.Name, email, CancellationToken.None);
 
         Assert.False(context.ChangeTracker.HasChanges());
     }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ANewMember_When_CreateMember_Then_ComputesTheEmailLookupHash(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string email)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var member = CreateMember(organizationId, externalUserId, email);
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        var created = await queries.CreateMember(member, CancellationToken.None);
+
+        // Then
+        Assert.Equal(hasher.ComputeHash(email), created.EmailLookupHash);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AChangedEmail_When_RefreshContactDetailsAsync_Then_RecomputesTheEmailLookupHash(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var member = CreateMember(organizationId, externalUserId, "old-email@contoso.test");
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        await queries.RefreshContactDetailsAsync(member.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var persistedMember = await verificationContext.OrganizationMembers.SingleAsync(candidate => candidate.Id == member.Id);
+        Assert.Equal(hasher.ComputeHash(newEmail), persistedMember.EmailLookupHash);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_MembersWithoutALookupHash_When_ReencryptAllMembersAsync_Then_ComputesItForEveryRow(
+        Guid databaseId,
+        Guid firstOrganizationId,
+        Guid secondOrganizationId,
+        string firstExternalUserId,
+        string secondExternalUserId,
+        string firstEmail,
+        string secondEmail)
+    {
+        // Given: rows written before this ticket have no EmailLookupHash yet.
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var firstMember = CreateMember(firstOrganizationId, firstExternalUserId, firstEmail);
+        var secondMember = CreateMember(secondOrganizationId, secondExternalUserId, secondEmail);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.AddRange(firstMember, secondMember);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        var processedCount = await queries.ReencryptAllMembersAsync(batchSize: 1, CancellationToken.None);
+
+        // Then
+        Assert.Equal(2, processedCount);
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var reloadedFirst = await verificationContext.OrganizationMembers.SingleAsync(m => m.Id == firstMember.Id);
+        var reloadedSecond = await verificationContext.OrganizationMembers.SingleAsync(m => m.Id == secondMember.Id);
+        Assert.Equal(hasher.ComputeHash(firstEmail), reloadedFirst.EmailLookupHash);
+        Assert.Equal(hasher.ComputeHash(secondEmail), reloadedSecond.EmailLookupHash);
+    }
+
+    private static HmacEmailBlindIndexHasher CreateRealHasher() =>
+        new(Options.Create(new MemberPiiOptions
+        {
+            EmailLookupHmacKey = "unit-test-email-lookup-hmac-key-32-chars-min"
+        }));
 
     private static OrganizationMember CreateMember(Guid organizationId, string externalUserId, string email) =>
         new()

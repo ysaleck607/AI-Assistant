@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssistantCore.Repository.Persistence.Configurations;
 
-public sealed class OrganizationMemberConfiguration : IEntityTypeConfiguration<OrganizationMember>
+public sealed class OrganizationMemberConfiguration(
+    IFieldEncryptor nameEncryptor,
+    IFieldEncryptor emailEncryptor) : IEntityTypeConfiguration<OrganizationMember>
 {
     public void Configure(EntityTypeBuilder<OrganizationMember> builder)
     {
@@ -20,12 +22,23 @@ public sealed class OrganizationMemberConfiguration : IEntityTypeConfiguration<O
             .IsRequired();
 
         builder.Property(member => member.Name)
-            .HasMaxLength(200)
+            .HasConversion(new EncryptedStringConverter(nameEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
 
         builder.Property(member => member.Email)
-            .HasMaxLength(320)
+            .HasConversion(new EncryptedStringConverter(emailEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
+
+        // Index aveugle HMAC : permet une recherche exacte sur l'email sans jamais le
+        // dechiffrer. Jamais unique - deux identites externes distinctes peuvent
+        // legitimement partager un email (voir #31) ; seul (OrganizationId,
+        // IdentityProvider, ExternalUserId) identifie un membre.
+        builder.Property(member => member.EmailLookupHash)
+            .HasMaxLength(64);
+
+        builder.HasIndex(member => new { member.OrganizationId, member.EmailLookupHash });
 
         builder.Property(member => member.IdentityProvider)
             .HasConversion<string>()

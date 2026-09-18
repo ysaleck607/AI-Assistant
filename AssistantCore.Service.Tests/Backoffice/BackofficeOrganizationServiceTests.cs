@@ -386,6 +386,10 @@ public sealed class BackofficeOrganizationServiceTests
             string name,
             string email,
             CancellationToken cancellationToken = default) => throw new NotSupportedException();
+
+        public Task<int> ReencryptAllMembersAsync(
+            int batchSize,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 
     private sealed class StubAdministrativeAuditRepository : IAdministrativeAuditRepository

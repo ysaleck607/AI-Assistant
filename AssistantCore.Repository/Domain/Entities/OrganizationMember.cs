@@ -12,6 +12,12 @@ public sealed class OrganizationMember
 
     public string Email { get; set; } = string.Empty;
 
+    /// <summary>
+    /// Index aveugle HMAC de l'email normalise. Permet une recherche exacte sans
+    /// dechiffrer : null tant que la ligne n'a pas ete recalculee par le rattrapage.
+    /// </summary>
+    public string? EmailLookupHash { get; set; }
+
     public IdentityProvider IdentityProvider { get; set; }
 
     public string ExternalUserId { get; set; } = string.Empty;

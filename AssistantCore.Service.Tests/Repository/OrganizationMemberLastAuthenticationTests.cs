@@ -27,7 +27,7 @@ public sealed class OrganizationMemberLastAuthenticationTests
         }
 
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When
         await queries.RecordSuccessfulAuthenticationAsync(member.Id, authenticatedAt, CancellationToken.None);
@@ -59,7 +59,7 @@ public sealed class OrganizationMemberLastAuthenticationTests
         var olderAttempt = recentAuthenticationAt.AddMinutes(-5);
 
         await using var context = new AssistantCoreDbContext(options);
-        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When
         await queries.RecordSuccessfulAuthenticationAsync(member.Id, olderAttempt, CancellationToken.None);

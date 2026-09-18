@@ -24,7 +24,8 @@ public class AssistantCoreDbContext(
         typeof(Microsoft365ListItemWorkConfiguration),
         typeof(Microsoft365SourceConfiguration),
         typeof(Microsoft365DocumentWorkConfiguration),
-        typeof(Microsoft365IndexedContentConfiguration)
+        typeof(Microsoft365IndexedContentConfiguration),
+        typeof(OrganizationMemberConfiguration)
     ];
 
     public DbSet<Organization> Organizations => Set<Organization>();
@@ -109,5 +110,9 @@ public class AssistantCoreDbContext(
             EncryptorFactory.CreateFor("AssistantCore.Microsoft365.IndexedContent.SiteUrl.v1"),
             EncryptorFactory.CreateFor("AssistantCore.Microsoft365.IndexedContent.Title.v1"),
             EncryptorFactory.CreateFor("AssistantCore.Microsoft365.IndexedContent.WebUrl.v1")));
+
+        modelBuilder.ApplyConfiguration(new OrganizationMemberConfiguration(
+            EncryptorFactory.CreateFor("AssistantCore.Members.Name.v1"),
+            EncryptorFactory.CreateFor("AssistantCore.Members.Email.v1")));
     }
 }

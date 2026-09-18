@@ -63,4 +63,13 @@ public interface IOrganizationMemberQueries
         string name,
         string email,
         CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Force le rechiffrement de Name/Email et le recalcul de l'index aveugle pour un
+    /// lot de membres. A appeler explicitement lors du rattrapage des lignes ecrites
+    /// avant l'activation du chiffrement ; jamais declenche automatiquement.
+    /// </summary>
+    Task<int> ReencryptAllMembersAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default);
 }

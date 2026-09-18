@@ -9,18 +9,25 @@ namespace AssistantCore.Repository.Queries;
 
 public sealed class OrganizationMemberQueries(
     AssistantCoreDbContext dbContext,
-    IAdministrativeAuditRepository administrativeAuditRepository) : IOrganizationMemberQueries
+    IAdministrativeAuditRepository administrativeAuditRepository,
+    IEmailBlindIndexHasher emailHasher) : IOrganizationMemberQueries
 {
     public async Task<IReadOnlyCollection<OrganizationMember>> GetMembers(
         Guid organizationId,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.OrganizationMembers
+        // Name and Email are encrypted at rest with a non-deterministic cipher, so an
+        // ORDER BY on either can no longer be pushed down to SQL. Ordering happens in
+        // memory instead, after decryption, on the organization-scoped candidate set.
+        var members = await dbContext.OrganizationMembers
             .AsNoTracking()
             .Where(member => member.OrganizationId == organizationId)
-            .OrderBy(member => member.Name)
-            .ThenBy(member => member.Email)
-            .ToListAsync(cancellationToken);
+            .ToArrayAsync(cancellationToken);
+
+        return members
+            .OrderBy(member => member.Name, StringComparer.Ordinal)
+            .ThenBy(member => member.Email, StringComparer.Ordinal)
+            .ToArray();
     }
 
     public async Task<OrganizationMemberWithOrganization?> FindMemberWithOrganization(
@@ -76,6 +83,7 @@ public sealed class OrganizationMemberQueries(
         OrganizationMember member,
         CancellationToken cancellationToken = default)
     {
+        member.EmailLookupHash = emailHasher.ComputeHash(member.Email);
         dbContext.OrganizationMembers.Add(member);
 
         try
@@ -242,6 +250,42 @@ public sealed class OrganizationMemberQueries(
 
         member.Name = name;
         member.Email = email;
+        member.EmailLookupHash = emailHasher.ComputeHash(email);
         await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task<int> ReencryptAllMembersAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        var totalProcessed = 0;
+        while (true)
+        {
+            var batch = await dbContext.OrganizationMembers
+                .OrderBy(member => member.Id)
+                .Skip(totalProcessed)
+                .Take(batchSize)
+                .ToListAsync(cancellationToken);
+            if (batch.Count == 0)
+            {
+                break;
+            }
+
+            foreach (var member in batch)
+            {
+                // Forces the converter to re-run even though the plaintext value did not
+                // change - this is what actually encrypts a row written before encryption
+                // existed, or re-encrypts under the current key.
+                dbContext.Entry(member).Property(candidate => candidate.Name).IsModified = true;
+                dbContext.Entry(member).Property(candidate => candidate.Email).IsModified = true;
+                member.EmailLookupHash = emailHasher.ComputeHash(member.Email);
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            dbContext.ChangeTracker.Clear();
+            totalProcessed += batch.Count;
+        }
+
+        return totalProcessed;
     }
 }

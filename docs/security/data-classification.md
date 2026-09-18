@@ -165,7 +165,7 @@ déjà calculées.
 | Organization | `Id`, `IdentityProvider`, `ExternalTenantId`, `Status`, `CreatedAt` |
 | OrganizationConnector | toutes : `Id`, `OrganizationId`, `Type`, `Status`, `IsConfigured` |
 | OrganizationConnectorSource | toutes : `OrganizationConnectorId`, `Status`, `IsIndexed` |
-| OrganizationMember | `Id`, `OrganizationId`, `IdentityProvider`, `ExternalUserId`, `Role`, `Status`, `LastSuccessfulAuthenticationAt`, `Version` |
+| OrganizationMember | `Id`, `OrganizationId`, `EmailLookupHash`, `IdentityProvider`, `ExternalUserId`, `Role`, `Status`, `LastSuccessfulAuthenticationAt`, `Version` |
 | PurgeOperation | toutes : `Id`, `OrganizationId`, `Scope`, `TargetId`, `RequestedAt`, `PurgeAfter`, `Status`, `Step`, `LeaseId`, `LeaseExpiresAt`, `AttemptCount`, `NextAttemptAt`, `LastErrorCode`, `CompletedAt` |
 | TokenConsumption | toutes : `Id`, `OrganizationId`, `AssistantMessageId`, `PeriodStartsAt`, `PeriodEndsAt`, `InputTokens`, `OutputTokens`, `TotalTokens`, `CreatedAt` |
 

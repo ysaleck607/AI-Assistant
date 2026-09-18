@@ -38,6 +38,38 @@ public sealed class OrganizationMemberPersistenceConfigurationTests
                     nameof(OrganizationMember.ExternalUserId)));
     }
 
+    [Theory, AutoDomainData]
+    public void Given_OrganizationMemberModel_When_InspectingConfiguration_Then_NameAndEmailAreEncryptedAndTheBlindIndexIsNotUnique(
+        Guid databaseId)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        using var dbContext = new AssistantCoreDbContext(options);
+
+        // When
+        var memberType = dbContext.Model.FindEntityType(typeof(OrganizationMember));
+
+        // Then
+        Assert.NotNull(memberType);
+        Assert.IsType<EncryptedStringConverter>(
+            memberType.FindProperty(nameof(OrganizationMember.Name))?.GetValueConverter());
+        Assert.IsType<EncryptedStringConverter>(
+            memberType.FindProperty(nameof(OrganizationMember.Email))?.GetValueConverter());
+
+        // Never unique - two distinct external identities may legitimately share an
+        // email within the same organization (see #31); the blind index only speeds
+        // up an exact-match lookup, it never enforces identity.
+        Assert.Contains(
+            memberType.GetIndexes(),
+            index => !index.IsUnique
+                && HasProperties(
+                    index,
+                    nameof(OrganizationMember.OrganizationId),
+                    nameof(OrganizationMember.EmailLookupHash)));
+    }
+
     private static bool HasProperties(
         Microsoft.EntityFrameworkCore.Metadata.IReadOnlyIndex index,
         params string[] propertyNames) =>
