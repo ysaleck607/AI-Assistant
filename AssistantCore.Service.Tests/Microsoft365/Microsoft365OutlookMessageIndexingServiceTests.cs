@@ -176,6 +176,7 @@ public sealed class Microsoft365OutlookMessageIndexingServiceTests
         }
 
         public Task DeleteAsync(
+            Guid organizationId,
             IReadOnlyCollection<string> chunkIds,
             CancellationToken cancellationToken = default)
         {

@@ -59,6 +59,7 @@ public sealed class Microsoft365PassageIndexWriterAdapter(
     }
 
     public Task DeleteAsync(
+        Guid organizationId,
         IReadOnlyCollection<string> chunkIds,
         CancellationToken cancellationToken = default)
     {
@@ -67,6 +68,7 @@ public sealed class Microsoft365PassageIndexWriterAdapter(
             configuration.Endpoint,
             configuration.IndexName,
             configuration.ApiKey,
+            organizationId,
             chunkIds,
             cancellationToken);
     }

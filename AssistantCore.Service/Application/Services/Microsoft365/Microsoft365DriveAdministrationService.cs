@@ -87,7 +87,7 @@ public sealed class Microsoft365DriveAdministrationService(
                 .ToArray();
             if (chunkIds.Length > 0)
             {
-                await indexWriter.DeleteAsync(chunkIds, cancellationToken);
+                await indexWriter.DeleteAsync(organization.Id, chunkIds, cancellationToken);
             }
 
             foreach (var content in contents)

@@ -185,7 +185,7 @@ public sealed class Microsoft365DocumentProcessingService(
         var obsolete = obsoleteChunkIds.Where(chunkId => !currentChunkIds.Contains(chunkId)).ToArray();
         if (obsolete.Length > 0)
         {
-            await indexWriter.DeleteAsync(obsolete, cancellationToken);
+            await indexWriter.DeleteAsync(work.OrganizationId, obsolete, cancellationToken);
         }
 
         await aclSynchronizationService.RegisterAsync(
@@ -240,7 +240,7 @@ public sealed class Microsoft365DocumentProcessingService(
         var chunkIds = content.Passages.Select(passage => passage.ChunkId).ToArray();
         if (chunkIds.Length > 0)
         {
-            await indexWriter.DeleteAsync(chunkIds, cancellationToken);
+            await indexWriter.DeleteAsync(work.OrganizationId, chunkIds, cancellationToken);
         }
 
         await indexedContentRepository.DeleteAsync(content, cancellationToken);

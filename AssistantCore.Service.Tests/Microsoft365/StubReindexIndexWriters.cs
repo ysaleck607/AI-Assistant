@@ -63,6 +63,7 @@ internal sealed class StubReindexPassageIndexWriter : IMicrosoft365PassageIndexW
         CancellationToken cancellationToken = default) => Task.CompletedTask;
 
     public Task DeleteAsync(
+        Guid organizationId,
         IReadOnlyCollection<string> chunkIds,
         CancellationToken cancellationToken = default)
     {

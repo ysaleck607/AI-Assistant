@@ -1,4 +1,5 @@
 using System.Net;
+using System.Net.Http.Headers;
 using System.Text.Json;
 using AssistantCore.ExternalServices.Entities.Azure;
 using AssistantCore.ExternalServices.Services.Azure;
@@ -176,5 +177,99 @@ public sealed class AzureAiSearchPassageAclClientTests
 
         // Then
         await Assert.ThrowsAsync<AzureAiSearchExternalException>(action);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ChunkIdsAndOrganization_When_DeleteAsync_Then_DeletesOnlyMatchingOrganizationChunks(
+        string apiKey,
+        Guid organizationId,
+        string chunkId)
+    {
+        // Given
+        var requests = new List<(string Path, string Body)>();
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(request =>
+        {
+            var body = request.Content?.ReadAsStringAsync().GetAwaiter().GetResult() ?? string.Empty;
+            requests.Add((request.RequestUri!.AbsolutePath, body));
+            return request.RequestUri.AbsolutePath.EndsWith("/search", StringComparison.Ordinal)
+                ? new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent($"{{\"value\":[{{\"chunkId\":\"{chunkId}\"}}]}}")
+                }
+                : new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("{\"value\":[{\"key\":\"chunk\",\"status\":true}]}")
+                };
+        }));
+        var client = new AzureAiSearchPassageAclClient(httpClient);
+
+        // When
+        await client.DeleteAsync(
+            "https://search.example",
+            "content-index",
+            apiKey,
+            organizationId,
+            [chunkId]);
+
+        // Then
+        Assert.Equal(2, requests.Count);
+        using var searchPayload = JsonDocument.Parse(requests[0].Body);
+        var filter = searchPayload.RootElement.GetProperty("filter").GetString()!;
+        Assert.Contains($"organizationId eq '{organizationId:D}'", filter, StringComparison.Ordinal);
+        Assert.Contains(chunkId, filter, StringComparison.Ordinal);
+        using var deletePayload = JsonDocument.Parse(requests[1].Body);
+        var action = deletePayload.RootElement.GetProperty("value").EnumerateArray().Single();
+        Assert.Equal("delete", action.GetProperty("@search.action").GetString());
+        Assert.Equal(chunkId, action.GetProperty("chunkId").GetString());
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ATransientAzureResponse_When_MergeOrUploadAsync_Then_RetriesTheBatch(
+        string apiKey,
+        string chunkId,
+        Guid organizationId,
+        string title,
+        string content)
+    {
+        // Given
+        var requestCount = 0;
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            requestCount++;
+            if (requestCount < 2)
+            {
+                var retry = new HttpResponseMessage((HttpStatusCode)429);
+                retry.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.Zero);
+                return retry;
+            }
+
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("{\"value\":[{\"key\":\"chunk\",\"status\":true}]}")
+            };
+        }));
+        var client = new AzureAiSearchPassageAclClient(httpClient);
+        var passage = new AzureAiSearchPassageDocument(
+            chunkId,
+            organizationId.ToString("D"),
+            title,
+            content,
+            [],
+            [],
+            [],
+            false,
+            false,
+            new string('a', 64),
+            false);
+
+        // When
+        await client.MergeOrUploadAsync(
+            "https://search.example",
+            "content-index",
+            apiKey,
+            [passage]);
+
+        // Then
+        Assert.Equal(2, requestCount);
     }
 }

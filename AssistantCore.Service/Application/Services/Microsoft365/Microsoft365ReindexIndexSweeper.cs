@@ -45,7 +45,7 @@ public sealed class Microsoft365ReindexIndexSweeper(
             .ToArray();
         if (chunkIds.Length > 0)
         {
-            await indexWriter.DeleteAsync(chunkIds, cancellationToken);
+            await indexWriter.DeleteAsync(organizationId, chunkIds, cancellationToken);
         }
 
         foreach (var content in obsoleteContents)

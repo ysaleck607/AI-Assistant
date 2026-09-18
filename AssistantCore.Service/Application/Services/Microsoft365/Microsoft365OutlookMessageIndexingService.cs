@@ -100,7 +100,7 @@ public sealed class Microsoft365OutlookMessageIndexingService(
             ?? [];
         if (obsoleteChunkIds.Length > 0)
         {
-            await indexWriter.DeleteAsync(obsoleteChunkIds, cancellationToken);
+            await indexWriter.DeleteAsync(organization.Id, obsoleteChunkIds, cancellationToken);
         }
         await aclSynchronizationService.RegisterAsync(
             organization.Id,
@@ -144,7 +144,7 @@ public sealed class Microsoft365OutlookMessageIndexingService(
             chunkIds = [CreateChunkId(sourceId, messageId)];
         }
 
-        await indexWriter.DeleteAsync(chunkIds, cancellationToken);
+        await indexWriter.DeleteAsync(organizationId, chunkIds, cancellationToken);
         await aclSynchronizationService.MarkUnavailableIfRegisteredAsync(
             organizationId,
             sourceId,
