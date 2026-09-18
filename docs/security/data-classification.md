@@ -138,7 +138,7 @@ l'exploitant du service.
 <a id="inventaire-clair"></a>
 ## Colonnes autorisées en clair — niveau D
 
-Les 23 entités persistées sont inventoriées. Les colonnes ci-dessous sont
+Les 24 entités persistées sont inventoriées. Les colonnes ci-dessous sont
 classées D : identifiants techniques, états, dates, compteurs et empreintes
 déjà calculées.
 
@@ -166,6 +166,7 @@ déjà calculées.
 | OrganizationConnector | toutes : `Id`, `OrganizationId`, `Type`, `Status`, `IsConfigured` |
 | OrganizationConnectorSource | toutes : `OrganizationConnectorId`, `Status`, `IsIndexed` |
 | OrganizationMember | `Id`, `OrganizationId`, `IdentityProvider`, `ExternalUserId`, `Role`, `Status`, `LastSuccessfulAuthenticationAt`, `Version` |
+| PurgeOperation | toutes : `Id`, `OrganizationId`, `Scope`, `TargetId`, `RequestedAt`, `PurgeAfter`, `Status`, `Step`, `LeaseId`, `LeaseExpiresAt`, `AttemptCount`, `NextAttemptAt`, `LastErrorCode`, `CompletedAt` |
 | TokenConsumption | toutes : `Id`, `OrganizationId`, `AssistantMessageId`, `PeriodStartsAt`, `PeriodEndsAt`, `InputTokens`, `OutputTokens`, `TotalTokens`, `CreatedAt` |
 
 `ExternalUserId` reste en clair volontairement : c'est l'`oid` Microsoft Entra,

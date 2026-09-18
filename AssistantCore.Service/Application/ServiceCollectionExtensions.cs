@@ -68,8 +68,8 @@ public static class ServiceCollectionExtensions
         services.AddOptions<RetentionOptions>()
             .Bind(configuration.GetSection(RetentionOptions.SectionName))
             .Validate(
-                options => options.ConversationRecoveryDays > 0,
-                $"{RetentionOptions.SectionName}:{nameof(RetentionOptions.ConversationRecoveryDays)} must be greater than zero.")
+                options => options.IsValid(),
+                $"{RetentionOptions.SectionName} requires a positive retention duration for every category.")
             .ValidateOnStart();
         services.AddOptions<OrganizationRoleOptions>()
             .Bind(configuration.GetSection(OrganizationRoleOptions.SectionName))

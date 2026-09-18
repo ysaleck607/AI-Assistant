@@ -65,6 +65,8 @@ public class AssistantCoreDbContext(
     public DbSet<ConversationPurgeRequest> ConversationPurgeRequests =>
         Set<ConversationPurgeRequest>();
 
+    public DbSet<PurgeOperation> PurgeOperations => Set<PurgeOperation>();
+
     public DbSet<Message> Messages => Set<Message>();
 
     public DbSet<MessageSource> MessageSources => Set<MessageSource>();
