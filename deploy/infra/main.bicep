@@ -269,6 +269,11 @@ var apiSecrets = [
         keyVaultUrl: '${keyVaultBaseUrl}/azure-search-api-key'
         identity: workloadIdentity.id
       }
+      {
+        name: 'member-pii-email-lookup-hmac-key'
+        keyVaultUrl: '${keyVaultBaseUrl}/member-pii-email-lookup-hmac-key'
+        identity: workloadIdentity.id
+      }
     ]
 
 var commonApiEnvironmentVariables = [
@@ -338,6 +343,10 @@ var certifApiEnvironmentVariables = [
   {
     name: 'Microsoft365__ClientStateHmacKey'
     secretRef: 'microsoft365-clientstate-hmac-key'
+  }
+  {
+    name: 'MemberPii__EmailLookupHmacKey'
+    secretRef: 'member-pii-email-lookup-hmac-key'
   }
   {
     name: 'Microsoft365__SharePointCertificateBase64'
@@ -528,6 +537,11 @@ var workerSecrets = [
         keyVaultUrl: '${keyVaultBaseUrl}/azure-search-api-key'
         identity: workloadIdentity.id
       }
+      {
+        name: 'member-pii-email-lookup-hmac-key'
+        keyVaultUrl: '${keyVaultBaseUrl}/member-pii-email-lookup-hmac-key'
+        identity: workloadIdentity.id
+      }
     ]
 
 var commonWorkerEnvironmentVariables = [
@@ -581,6 +595,10 @@ var certifWorkerEnvironmentVariables = [
   {
     name: 'Microsoft365__ClientStateHmacKey'
     secretRef: 'microsoft365-clientstate-hmac-key'
+  }
+  {
+    name: 'MemberPii__EmailLookupHmacKey'
+    secretRef: 'member-pii-email-lookup-hmac-key'
   }
   {
     name: 'Microsoft365__SharePointCertificateBase64'
