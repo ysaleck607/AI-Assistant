@@ -109,7 +109,9 @@ deploy/
 └── environments/
     ├── shared.bicepparam
     ├── certif.bootstrap.bicepparam
-    └── certif.bicepparam
+    ├── certif.bicepparam
+    ├── prod.bootstrap.bicepparam
+    └── prod.bicepparam
 
 .github/workflows/
 ├── provision-azure.yml
@@ -119,9 +121,9 @@ deploy/
 └── release-candidate.yml
 ```
 
-`main.bicep` déploie l'environnement CERTIF. Le fichier `.bicepparam` contient
-les paramètres non sensibles de cet environnement. Aucun fichier ou workflow
-PROD n'est créé pendant cette étape.
+`main.bicep` déploie CERTIF ou PROD à partir de la même topologie. Chaque
+fichier `.bicepparam` contient uniquement les paramètres non sensibles de son
+environnement; les valeurs confidentielles restent dans le Key Vault associé.
 
 <a id="production-deployment-environments"></a>
 ### Environnements
@@ -133,6 +135,15 @@ CERTIF possède :
 - une identité managée;
 - ses données;
 - l'API et le worker.
+
+PROD possède son propre groupe de ressources, sa base SQL, son Key Vault, son
+stockage de clés Data Protection, ses applications Entra, ses ressources Azure
+OpenAI/Foundry/Vision et, après la première promotion, ses Container Apps et son
+Front Door. Le service Azure AI Search Basic est partagé pour optimiser le
+coût, mais chaque client possède un index, une source et une base de
+connaissances distincts. Le premier ensemble PROD est
+`ogcomptabilite-index`, `ogcomptabilite-knowledge-source` et
+`ogcomptabilite-knowledge-base`.
 
 La base Azure SQL et ses droits sont dédiés à CERTIF. Elle utilise la limite
 gratuite serverless et se met en pause après une heure d'inactivité.
@@ -215,13 +226,20 @@ PROD. Le pipeline PROD doit aussi vérifier que l’artifact provient d’une
 exécution réussie du workflow `Promote release candidate to CERTIF`; le nom de
 l’artifact seul ne constitue pas une preuve de certification.
 
-Avant d’activer ce pipeline, créer un environnement GitHub `prod` protégé par
-des approbateurs et une identité OIDC dédiée à PROD. Son identifiant fédéré doit
+Avant d’activer ce pipeline, créer un environnement GitHub `prod` et une
+identité OIDC dédiée à PROD. Son identifiant fédéré doit
 cibler exactement `environment:prod`; ses rôles Azure doivent être limités au
 groupe de ressources PROD et à la lecture de l’ACR partagé. Ne pas réutiliser
 l’identité de déploiement CERTIF pour PROD. Les redirect URIs, secrets, clés de
 chiffrement, base SQL et identités managées PROD doivent également rester
 séparés de CERTIF.
+
+Pour un dépôt privé dont le forfait GitHub ne permet pas les approbateurs
+d’environnement, limiter `prod` à la branche par défaut exacte et ne stocker
+aucun secret dans GitHub. Ajouter une protection de branche avec revue dès que
+le forfait le permet. Les secrets PROD restent dans Key Vault. Le pipeline PROD
+accepte uniquement un artifact `certified-rc-*`, valide sa provenance et
+déploie ses cinq digests sans reconstruire d’image.
 
 <a id="production-deployment-secrets"></a>
 ### Secrets

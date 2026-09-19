@@ -4,6 +4,7 @@ param location string = resourceGroup().location
 
 @allowed([
   'certif'
+  'prod'
 ])
 param environmentName string
 
@@ -21,28 +22,50 @@ param backendImageTag string
 param spaImageTag string
 
 param sqlAdministratorLogin string = 'assistantadmin'
+param sqlDatabaseName string = environmentName == 'certif' ? 'AssistantCoreDbCertif' : 'AssistantCoreDb'
 param azureAdTenantId string = 'organizations'
-param azureAdApiClientId string = 'f70fb50b-52d5-4346-b769-1121cb3ab3e2'
+param azureAdApiClientId string = environmentName == 'prod'
+  ? '50058836-543d-4def-be0a-d4d5290d29ad'
+  : 'f70fb50b-52d5-4346-b769-1121cb3ab3e2'
 
 @description('Confidential Entra application used by the BFF. Do not reuse a public SPA registration.')
 param bffEntraClientId string
 
-param microsoft365ClientId string = environmentName == 'certif'
-  ? '558d6670-3549-423e-ae92-c5ff1d3b326b'
-  : '00000000-0000-0000-0000-000000000001'
+param microsoft365ClientId string = environmentName == 'prod'
+  ? 'f2907152-55be-49ef-b230-9b6821478433'
+  : '558d6670-3549-423e-ae92-c5ff1d3b326b'
 
-param dataProtectionKeysStorageAccountName string = 'assistantcertkeys01'
+param dataProtectionKeysStorageAccountName string = environmentName == 'prod'
+  ? 'assistantprodkeysonp01'
+  : 'assistantcertkeys01'
 param dataProtectionKeyName string = 'dataprotection-key'
-param azureSearchEndpoint string = 'https://synaptixsearch.search.windows.net'
-param azureSearchIndexName string = 'microsoft-content-${environmentName}'
-param azureOpenAiEmbeddingEndpoint string = 'https://onpremia-openai-search.openai.azure.com'
+param azureSearchEndpoint string = 'https://srch-assistant-onp01.search.windows.net'
+param azureSearchIndexName string = environmentName == 'prod'
+  ? 'ogcomptabilite-index'
+  : 'microsoft-content-certif'
+param azureSearchKnowledgeSourceName string = environmentName == 'prod'
+  ? 'ogcomptabilite-knowledge-source'
+  : 'synaptix-m365-certif-knowledge-source'
+param azureSearchKnowledgeBaseName string = environmentName == 'prod'
+  ? 'ogcomptabilite-knowledge-base'
+  : 'synaptix-m365-certif-knowledge-base'
+param azureOpenAiEmbeddingEndpoint string = environmentName == 'prod'
+  ? 'https://aoai-assistant-prod-onp01.openai.azure.com'
+  : 'https://onpremia-openai-search.openai.azure.com'
 param azureOpenAiEmbeddingDeploymentName string = 'm365-text-embedding-3-small'
 param azureOpenAiEmbeddingModelName string = 'text-embedding-3-small'
-param azureOpenAiPlanningEndpoint string = 'https://josetchibozo7-5469-resource.openai.azure.com'
-param azureOpenAiPlanningDeploymentName string = 'gpt-5.5-1'
+param azureOpenAiPlanningEndpoint string = environmentName == 'prod'
+  ? 'https://ai-assistant-prod-onp01.openai.azure.com'
+  : 'https://josetchibozo7-5469-resource.openai.azure.com'
+param azureOpenAiPlanningDeploymentName string = environmentName == 'prod' ? 'gpt-5.5-prod' : 'gpt-5.5-1'
 param azureOpenAiPlanningModelName string = 'gpt-5.5'
-param foundryAccountName string = 'josetchibozo7-5469-resource'
-param foundryProjectName string = 'onpremia-openai-search'
+param foundryAccountName string = environmentName == 'prod' ? 'ai-assistant-prod-onp01' : 'josetchibozo7-5469-resource'
+param foundryProjectName string = environmentName == 'prod' ? 'onpremia-production' : 'onpremia-openai-search'
+param foundryAgentName string = environmentName == 'prod' ? 'onpremia-production-agent' : 'onpremia-test-agent'
+param foundryAgentVersion string = environmentName == 'prod' ? '1' : '17'
+param azureVisionOcrEndpoint string = environmentName == 'prod'
+  ? 'https://vision-assistant-prod-onp01.cognitiveservices.azure.com/'
+  : 'https://vision-assistant.cognitiveservices.azure.com/'
 
 @allowed([
   'minimal'
@@ -59,7 +82,10 @@ param tags object = {
 
 var acrName = 'acrassistant${nameSuffix}'
 var acrLoginServer = '${acrName}.azurecr.io'
-var keyVaultName = 'kv-assistant-cert-${nameSuffix}'
+var keyVaultEnvironmentName = environmentName == 'certif' ? 'cert' : environmentName
+var keyVaultName = 'kv-assistant-${keyVaultEnvironmentName}-${nameSuffix}'
+var runtimeEnvironmentName = environmentName == 'prod' ? 'Production' : 'Certif'
+var spaLaunchMode = environmentName == 'prod' ? 'Production' : 'Certification'
 var containerEnvironmentName = 'cae-assistant-${environmentName}'
 var apiAppName = 'ca-assistant-api-${environmentName}'
 var workerAppName = 'ca-assistant-worker-${environmentName}'
@@ -73,6 +99,7 @@ var acrPullIdentityName = 'id-assistant-acr-${environmentName}'
 var dataProtectionKeysContainerName = 'dataprotection-keys'
 var publicDomain = 'assistant-${environmentName}.onpremia.ca'
 var publicOrigin = 'https://${publicDomain}'
+var foundryProjectEndpoint = 'https://${foundryAccountName}.services.ai.azure.com/api/projects/${foundryProjectName}'
 var keyVaultBaseUrl = 'https://${keyVaultName}.${environment().suffixes.keyvaultDns}/secrets'
 var dataProtectionBlobUri = '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
 var bffDataProtectionBlobUri = '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/bff-keys.xml'
@@ -263,8 +290,10 @@ module sql './modules/sql.bicep' = {
     environmentName: environmentName
     nameSuffix: nameSuffix
     administratorLogin: sqlAdministratorLogin
+    databaseName: sqlDatabaseName
     administratorPassword: keyVault.getSecret('sql-admin-password')
     publicNetworkAccess: 'Disabled'
+    productionWorkload: environmentName == 'prod'
     tags: tags
   }
 }
@@ -300,7 +329,7 @@ resource containerEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' = {
         workloadProfileType: 'Consumption'
       }
     ]
-    zoneRedundant: false
+    zoneRedundant: environmentName == 'prod'
   }
 }
 
@@ -381,7 +410,7 @@ var commonRuntimeEnvironmentVariables = [
   }
   {
     name: 'Microsoft365__OcrEndpoint'
-    value: 'https://vision-assistant.cognitiveservices.azure.com/'
+    value: azureVisionOcrEndpoint
   }
   {
     name: 'Microsoft365__EmbeddingApiKey'
@@ -408,6 +437,14 @@ var commonRuntimeEnvironmentVariables = [
     value: azureSearchIndexName
   }
   {
+    name: 'AzureSearch__KnowledgeSourceName'
+    value: azureSearchKnowledgeSourceName
+  }
+  {
+    name: 'AzureSearch__KnowledgeBaseName'
+    value: azureSearchKnowledgeBaseName
+  }
+  {
     name: 'AzureSearch__ApiKey'
     secretRef: 'azure-search-api-key'
   }
@@ -430,6 +467,18 @@ var commonRuntimeEnvironmentVariables = [
   {
     name: 'AzureSearch__PlanningModelApiKey'
     secretRef: 'azure-openai-planning-api-key'
+  }
+  {
+    name: 'FoundryAgent__ProjectEndpoint'
+    value: foundryProjectEndpoint
+  }
+  {
+    name: 'FoundryAgent__AgentName'
+    value: foundryAgentName
+  }
+  {
+    name: 'FoundryAgent__AgentVersion'
+    value: foundryAgentVersion
   }
 ]
 
@@ -465,7 +514,7 @@ resource api 'Microsoft.App/containerApps@2025-01-01' = {
           env: concat([
             {
               name: 'ASPNETCORE_ENVIRONMENT'
-              value: 'Certif'
+              value: runtimeEnvironmentName
             }
             {
               name: 'AZURE_CLIENT_ID'
@@ -531,8 +580,8 @@ resource api 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
-        maxReplicas: 1
+        minReplicas: environmentName == 'prod' ? 2 : 1
+        maxReplicas: environmentName == 'prod' ? 5 : 1
       }
     }
   }
@@ -571,7 +620,7 @@ resource worker 'Microsoft.App/containerApps@2025-01-01' = {
           env: concat([
             {
               name: 'DOTNET_ENVIRONMENT'
-              value: 'Certif'
+              value: runtimeEnvironmentName
             }
             {
               name: 'AZURE_CLIENT_ID'
@@ -590,7 +639,7 @@ resource worker 'Microsoft.App/containerApps@2025-01-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: 1
+        maxReplicas: environmentName == 'prod' ? 3 : 1
       }
     }
   }
@@ -650,7 +699,7 @@ resource spa 'Microsoft.App/containerApps@2025-01-01' = {
             }
             {
               name: 'SPA_LAUNCH_MODE'
-              value: 'Certification'
+              value: spaLaunchMode
             }
             {
               name: 'SPA_AUTHENTICATION_URL'
@@ -676,7 +725,7 @@ resource spa 'Microsoft.App/containerApps@2025-01-01' = {
           env: [
             {
               name: 'ASPNETCORE_ENVIRONMENT'
-              value: 'Certif'
+              value: runtimeEnvironmentName
             }
             {
               name: 'ASPNETCORE_URLS'
@@ -760,8 +809,8 @@ resource spa 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: 1
-        maxReplicas: 1
+        minReplicas: environmentName == 'prod' ? 2 : 1
+        maxReplicas: environmentName == 'prod' ? 5 : 1
       }
     }
   }

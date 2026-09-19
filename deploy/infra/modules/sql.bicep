@@ -4,6 +4,7 @@ param location string
 param environmentName string
 param nameSuffix string
 param administratorLogin string
+param databaseName string = 'AssistantCoreDb'
 
 @secure()
 param administratorPassword string
@@ -13,10 +14,10 @@ param administratorPassword string
   'Disabled'
 ])
 param publicNetworkAccess string = 'Disabled'
+param productionWorkload bool = false
 
 param tags object = {}
 
-var databaseName = 'AssistantCoreDb'
 var sqlServerName = 'sql-assistant-${environmentName}-${nameSuffix}'
 
 resource sqlServer 'Microsoft.Sql/servers@2023-08-01' = {
@@ -45,12 +46,12 @@ resource database 'Microsoft.Sql/servers/databases@2023-08-01' = {
     capacity: 2
   }
   properties: {
-    autoPauseDelay: 60
-    minCapacity: json('0.5')
+    autoPauseDelay: productionWorkload ? -1 : 60
+    minCapacity: productionWorkload ? json('1') : json('0.5')
     maxSizeBytes: 34359738368
-    requestedBackupStorageRedundancy: 'Local'
-    useFreeLimit: true
-    freeLimitExhaustionBehavior: 'AutoPause'
+    requestedBackupStorageRedundancy: productionWorkload ? 'Geo' : 'Local'
+    useFreeLimit: !productionWorkload
+    freeLimitExhaustionBehavior: productionWorkload ? null : 'AutoPause'
   }
 }
 
