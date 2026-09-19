@@ -33,7 +33,7 @@ jobs:
 
     steps:
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -49,12 +49,21 @@ jobs:
           BACKEND_TAG="$REQUESTED_BACKEND_TAG"
           SPA_TAG="$REQUESTED_SPA_TAG"
           if [ -z "$BACKEND_TAG" ]; then
-            BACKEND_TAG="$(az acr repository show-tags \
+            while IFS= read -r candidate; do
+              if ! printf '%s' "$candidate" | grep -Eq '^sha-[0-9a-f]{40}$'; then
+                continue
+              fi
+              if az acr repository show --name "$ACR_NAME" --image "assistant-bff:${candidate}" --only-show-errors >/dev/null \
+                && az acr repository show --name "$ACR_NAME" --image "assistant-worker:${candidate}" --only-show-errors >/dev/null \
+                && az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${candidate}" --only-show-errors >/dev/null; then
+                BACKEND_TAG="$candidate"
+                break
+              fi
+            done < <(az acr repository show-tags \
               --name "$ACR_NAME" \
               --repository assistant-api \
               --orderby time_desc \
-              --output tsv \
-              | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
+              --output tsv)
           fi
           if [ -z "$SPA_TAG" ]; then
             SPA_TAG="$(az acr repository show-tags \
@@ -83,6 +92,7 @@ jobs:
           fi
 
           az acr repository show --name "$ACR_NAME" --image "assistant-api:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-bff:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-worker:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-spa:${SPA_TAG}" --only-show-errors >/dev/null
@@ -101,26 +111,43 @@ jobs:
         run: |
           mkdir -p release-candidate
           API_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "assistant-api:${BACKEND_TAG}" --query digest --output tsv)"
+          BFF_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "assistant-bff:${BACKEND_TAG}" --query digest --output tsv)"
           WORKER_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "assistant-worker:${BACKEND_TAG}" --query digest --output tsv)"
           MIGRATIONS_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${BACKEND_TAG}" --query digest --output tsv)"
           SPA_DIGEST="$(az acr repository show --name "$ACR_NAME" --image "assistant-spa:${SPA_TAG}" --query digest --output tsv)"
 
-          printf '%s\n' \
-            'schemaVersion: 1' \
-            "releaseCandidate: ${RC_NAME}" \
-            "createdAtUtc: $(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            'sourceEnvironment: acr' \
-            'images:' \
-            "  api: ${ACR_NAME}.azurecr.io/assistant-api@${API_DIGEST}" \
-            "  worker: ${ACR_NAME}.azurecr.io/assistant-worker@${WORKER_DIGEST}" \
-            "  migrations: ${ACR_NAME}.azurecr.io/assistant-migrations@${MIGRATIONS_DIGEST}" \
-            "  spa: ${ACR_NAME}.azurecr.io/assistant-spa@${SPA_DIGEST}" \
-            > "release-candidate/${RC_NAME}.yml"
+          jq -n \
+            --arg releaseCandidate "$RC_NAME" \
+            --arg createdAtUtc "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --arg backendCommit "${BACKEND_TAG#sha-}" \
+            --arg spaCommit "${SPA_TAG#sha-}" \
+            --arg apiImage "${ACR_NAME}.azurecr.io/assistant-api@${API_DIGEST}" \
+            --arg bffImage "${ACR_NAME}.azurecr.io/assistant-bff@${BFF_DIGEST}" \
+            --arg workerImage "${ACR_NAME}.azurecr.io/assistant-worker@${WORKER_DIGEST}" \
+            --arg migrationsImage "${ACR_NAME}.azurecr.io/assistant-migrations@${MIGRATIONS_DIGEST}" \
+            --arg spaImage "${ACR_NAME}.azurecr.io/assistant-spa@${SPA_DIGEST}" \
+            '{
+              schemaVersion: 2,
+              releaseCandidate: $releaseCandidate,
+              createdAtUtc: $createdAtUtc,
+              sourceEnvironment: "acr",
+              sourceCommits: {
+                backend: $backendCommit,
+                spa: $spaCommit
+              },
+              images: {
+                api: $apiImage,
+                bff: $bffImage,
+                worker: $workerImage,
+                migrations: $migrationsImage,
+                spa: $spaImage
+              }
+            }' > "release-candidate/${RC_NAME}.json"
 
       - name: Upload release candidate manifest
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ steps.release.outputs.name }}
-          path: release-candidate/${{ steps.release.outputs.name }}.yml
+          path: release-candidate/${{ steps.release.outputs.name }}.json
           if-no-files-found: error
           retention-days: 90

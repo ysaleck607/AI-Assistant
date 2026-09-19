@@ -1,4 +1,4 @@
-FROM flyway/flyway:11.12.0
+FROM flyway/flyway:13.7.0
 
 WORKDIR /flyway
 

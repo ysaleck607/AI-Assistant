@@ -25,6 +25,11 @@ on:
         description: Optional SPA SHA tag; defaults to the latest published tag in ACR
         required: false
         type: string
+      run_database_migrations:
+        description: Explicitly run Flyway after infrastructure deployment
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -227,7 +232,7 @@ jobs:
           done
 
       - name: Run database migrations
-        if: ${{ inputs.operation == 'deploy-environment' }}
+        if: ${{ inputs.operation == 'deploy-environment' && inputs.run_database_migrations }}
         run: |
           MIGRATIONS_JOB="caj-assistant-migrations-${{ inputs.environment_name }}"
           EXECUTION_NAME="$(az containerapp job start \

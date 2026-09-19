@@ -148,11 +148,12 @@ Un ACR Basic partagé stocke les images de candidats. Son compte administrateur
 est désactivé. Les Container Apps tirent les images avec une identité managée
 ayant seulement le rôle `AcrPull`.
 
-L'API, le worker, Flyway et la SPA sont publiés avec un tag basé sur
+L'API, le BFF, le worker, Flyway et la SPA sont publiés avec un tag basé sur
 le SHA complet du commit :
 
 ```text
 acrassistant<suffix>.azurecr.io/assistant-api:sha-<40 caractères>
+acrassistant<suffix>.azurecr.io/assistant-bff:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-worker:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-migrations:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-spa:sha-<40 caractères>
@@ -166,7 +167,7 @@ sert jamais de référence de déploiement.
 
 Le développement local conserve WireMock et l'authentification JWT locale.
 Après la réussite du CI sur la branche par défaut, les workflows construisent
-les images API, worker, migrations et SPA avec des tags SHA complets et les
+les images API, BFF, worker, migrations et SPA avec des tags SHA complets et les
 publient dans ACR. Ils ne déploient pas d'environnement Azure.
 
 <a id="production-deployment-certification"></a>
@@ -177,7 +178,8 @@ OpenAI et Azure AI Search. Il utilise la base `AssistantCoreDb` de son serveur
 Azure SQL CERTIF et uniquement des données de certification autorisées.
 
 Le déploiement CERTIF est déclenché manuellement avec `workflow_dispatch`.
-L'utilisateur fournit les tags immuables API/worker/migrations et SPA publiés après le CI.
+L'utilisateur fournit le tag backend commun aux images API/BFF/worker/migrations
+et le tag SPA publiés après le CI.
 
 Le workflow CERTIF ne reconstruit aucune image. Il :
 
@@ -185,7 +187,7 @@ Le workflow CERTIF ne reconstruit aucune image. Il :
 2. vérifie que les images existent dans ACR;
 3. exécute Flyway sur `assistantcore-certif`;
 4. déploie les images par digest;
-5. appelle `/health/live` et `/health/ready`;
+5. appelle `/health/live`, `/health/api-ready` et `/bff/session` par Front Door;
 6. vérifie que la SPA répond.
 
 Le déclenchement manuel constitue la décision de promotion. Une protection
@@ -197,11 +199,29 @@ au démarrage d'une séance. Il arrête automatiquement le worker après
 30 minutes. L'action d'arrêt remet les répliques à zéro et désactive les ingress
 publics de l'API et de la SPA.
 
-Le workflow `release-candidate.yml` produit un manifeste YAML avec les digests
-ACR exacts des images les plus récemment publiées. Les champs de tag peuvent
+Le workflow `release-candidate.yml` produit un manifeste JSON versionné avec les cinq
+digests ACR exacts des images les plus récemment publiées. Les champs de tag peuvent
 rester vides pour utiliser automatiquement les derniers tags SHA backend et SPA,
 ou être renseignés pour choisir une version précise. Le workflow CERTIF déploie
 ce manifeste sans reconstruire les images.
+
+Après la réussite des migrations et des contrôles CERTIF, le workflow publie
+une copie inchangée du manifeste sous le nom `certified-rc-*`. Ce manifeste est
+le contrat de promotion vers PROD : le pipeline PROD doit refuser un simple
+release candidate, télécharger uniquement un artifact `certified-rc-*`, puis
+déployer les mêmes digests API, BFF, Worker, migrations et SPA. Aucun tag ne doit
+être résolu à nouveau et aucune image ne doit être reconstruite entre CERTIF et
+PROD. Le pipeline PROD doit aussi vérifier que l’artifact provient d’une
+exécution réussie du workflow `Promote release candidate to CERTIF`; le nom de
+l’artifact seul ne constitue pas une preuve de certification.
+
+Avant d’activer ce pipeline, créer un environnement GitHub `prod` protégé par
+des approbateurs et une identité OIDC dédiée à PROD. Son identifiant fédéré doit
+cibler exactement `environment:prod`; ses rôles Azure doivent être limités au
+groupe de ressources PROD et à la lecture de l’ACR partagé. Ne pas réutiliser
+l’identité de déploiement CERTIF pour PROD. Les redirect URIs, secrets, clés de
+chiffrement, base SQL et identités managées PROD doivent également rester
+séparés de CERTIF.
 
 <a id="production-deployment-secrets"></a>
 ### Secrets
