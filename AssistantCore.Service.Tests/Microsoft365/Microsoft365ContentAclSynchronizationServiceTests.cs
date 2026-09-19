@@ -11,6 +11,41 @@ namespace AssistantCore.Service.Tests.Microsoft365;
 public sealed class Microsoft365ContentAclSynchronizationServiceTests
 {
     [Theory, AutoDomainData]
+    public async Task Given_HiddenPassagesAlreadyUploaded_When_RegisterAsync_Then_DoesNotRewriteAvailability(
+        Guid organizationId,
+        Guid sourceId,
+        string externalContentId,
+        string chunkId)
+    {
+        // Given
+        var acl = CreateAcl("user-1");
+        var content = CreateContent(
+            organizationId,
+            sourceId,
+            externalContentId,
+            chunkId,
+            acl.Fingerprint,
+            false);
+        var repository = new RecordingRepository(content);
+        var writer = new RecordingPassageWriter();
+        var service = CreateService(repository, writer);
+
+        // When
+        await service.RegisterAsync(
+            organizationId,
+            sourceId,
+            externalContentId,
+            [chunkId],
+            acl.Fingerprint,
+            "https://contoso.sharepoint.com");
+
+        // Then
+        Assert.Empty(writer.Operations);
+        Assert.False(content.IsAvailable);
+        Assert.Equal(1, repository.SaveCount);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_AnUnchangedPublishedAcl_When_SynchronizeAsync_Then_DoesNotRewritePassages(
         Guid organizationId,
         Guid sourceId,

@@ -1552,12 +1552,14 @@ Un document ne doit pas être envoyé en un seul bloc.
 
 Configuration initiale proposée :
 
-- environ 800 tokens par passage;
+- environ 1 200 tokens par passage;
 - chevauchement d’environ 100 tokens;
 - ne pas couper au milieu d’un paragraphe lorsque cela est évitable;
 - conserver le titre du document;
 - conserver le numéro de page lorsqu’il est connu;
-- ignorer les passages vides.
+- ignorer les passages vides;
+- refuser explicitement un document qui dépasse la limite totale de passages,
+  sans en indexer seulement une partie.
 
 Ces valeurs restent configurables.
 

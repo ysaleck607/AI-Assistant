@@ -25,10 +25,6 @@ public sealed class Microsoft365ContentAclSynchronizationService(
         ValidateIdentity(organizationId, sourceId, externalContentId);
         var normalizedChunkIds = NormalizeChunkIds(chunkIds);
         ValidateFingerprint(aclFingerprint);
-        await passageWriter.SetAvailabilityAsync(
-            normalizedChunkIds,
-            false,
-            cancellationToken);
 
         var now = timeProvider.GetUtcNow();
         var content = await repository.FindAsync(

@@ -84,7 +84,7 @@ public sealed class Microsoft365Options
 
     public int MaximumPowerPointSlides { get; init; } = 1_000;
 
-    public int ChunkMaximumTokens { get; init; } = 800;
+    public int ChunkMaximumTokens { get; init; } = 1200;
 
     public int ChunkOverlapTokens { get; init; } = 100;
 
