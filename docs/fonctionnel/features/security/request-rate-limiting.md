@@ -7,6 +7,7 @@
 - [Configuration et clés](#rate-limit-configuration)
 - [Réponse](#rate-limit-response)
 - [Ordre des contrôles](#rate-limit-order)
+- [Orchestrations simultanées](#rate-limit-orchestrations)
 - [Limites de la première version](#rate-limit-v1-limits)
 - [Évolution Redis et multi-instance](#rate-limit-distributed)
 - [Frontend](#rate-limit-frontend)
@@ -15,24 +16,27 @@
 <a id="rate-limit-purpose"></a>
 ## But
 
-Protéger l'envoi de messages contre les rafales qui pourraient démarrer trop
-d'appels IA en peu de temps. Après authentification, la limite repose sur le
-membre et l'organisation internes validés et non sur l'adresse IP.
+Protéger l'envoi de messages contre deux formes de surcharge : les rafales de
+requêtes et un trop grand nombre d'orchestrations IA exécutées en même temps.
+Après authentification, les limites reposent sur le membre et l'organisation
+internes validés et non sur l'adresse IP.
 
 La première version vise volontairement un déploiement avec une seule instance
-de l'API. Le code garde toutefois une abstraction de stockage afin de pouvoir
-remplacer le compteur mémoire par Redis lorsque plusieurs instances seront
+de l'API. Les compteurs et les places d'orchestration sont donc conservés dans
+la mémoire du processus, derrière des abstractions applicatives qui pourront
+recevoir une implémentation Redis lorsque plusieurs instances seront
 nécessaires.
 
 <a id="rate-limit-v1"></a>
 ## Version actuelle : première version single-instance
 
-La première version limite les endpoints suivants :
+La première version protège :
 
 - `POST /api/messages`;
 - `POST /api/messages/stream`.
 
-Pour chaque nouvel envoi, deux règles sont évaluées ensemble :
+Pour chaque nouvel envoi, deux règles de fréquence sont d'abord évaluées
+ensemble :
 
 1. un compteur propre au membre dans cette organisation;
 2. un compteur partagé par toute l'organisation.
@@ -42,19 +46,14 @@ incrémentés que si les deux limites autorisent la requête. Si la limite membr
 ou la limite organisation est déjà atteinte, aucun des deux compteurs n'est
 consommé par la tentative refusée.
 
-Les compteurs utilisent une fenêtre fixe d'une minute et sont conservés dans la
-mémoire du processus de l'API. Ils sont donc cohérents tant que l'application
-tourne sur une seule instance. Les fenêtres expirées sont supprimées
-opportunément lors des nouvelles acquisitions afin que les anciennes clés ne
-restent pas indéfiniment en mémoire.
+Après ces contrôles, l'API tente d'acquérir une place d'orchestration pour
+l'organisation. Une organisation ne peut exécuter qu'un nombre configurable
+d'orchestrations IA en parallèle. La place est acquise avant l'enregistrement
+de la question et avant tout appel à Foundry.
 
-Le contrôle est effectué après la résolution du membre et de l'organisation,
-mais avant l'enregistrement de la question et avant tout appel à Foundry ou à un
-autre fournisseur IA. Une requête refusée ne consomme donc pas un appel modèle.
-
-Pour le streaming, le contrôle est terminé avant le démarrage de la réponse
-Server-Sent Events. Cela permet encore de retourner un véritable statut HTTP
-`429` avec l'en-tête `Retry-After`.
+Pour le streaming, tous ces contrôles sont terminés avant le démarrage de la
+réponse Server-Sent Events. Un refus peut donc encore retourner un véritable
+statut HTTP `429` avec l'en-tête `Retry-After`.
 
 <a id="rate-limit-configuration"></a>
 ## Configuration et clés
@@ -65,15 +64,18 @@ Valeurs initiales configurables :
 {
   "RateLimiting": {
     "MemberMessagesPerMinute": 10,
-    "OrganizationMessagesPerMinute": 100
+    "OrganizationMessagesPerMinute": 100,
+    "OrganizationConcurrentOrchestrations": 5,
+    "OrchestrationLeaseSeconds": 300
   }
 }
 ```
 
-Les valeurs doivent être strictement supérieures à zéro et sont validées au
-démarrage de l'application.
+Toutes ces valeurs doivent être strictement supérieures à zéro et sont validées
+au démarrage de l'application.
 
-Les clés utilisent uniquement les identifiants internes validés :
+Les compteurs de fréquence utilisent uniquement les identifiants internes
+validés :
 
 ```text
 rate:member:{organizationId}:{memberId}:messages
@@ -82,16 +84,14 @@ rate:organization:{organizationId}:messages
 
 Alice et Bob possèdent donc chacun leur compteur membre, mais leurs envois
 alimentent aussi le même compteur si les deux appartiennent à la même
+organisation. Les places d'orchestration sont également isolées par
 organisation.
-
-L'adresse IP peut un jour servir à protéger une surface publique avant
-authentification, mais elle ne remplace jamais les clés membre et organisation
-après authentification.
 
 <a id="rate-limit-response"></a>
 ## Réponse
 
-Lorsqu'une limite est atteinte :
+Lorsqu'une limite de fréquence ou une limite d'orchestrations simultanées est
+atteinte :
 
 ```http
 429 Too Many Requests
@@ -106,14 +106,15 @@ Retry-After: 30
 }
 ```
 
-Si plusieurs règles sont simultanément bloquantes, `Retry-After` utilise le
-délai le plus long afin que le client ne réessaie pas avant que toutes les
-règles nécessaires puissent accepter une nouvelle requête.
+Pour une limite de fréquence, `Retry-After` correspond au délai nécessaire pour
+que les règles bloquantes puissent accepter une nouvelle requête. Pour une
+limite d'orchestrations simultanées, il correspond au prochain bail qui doit
+expirer si aucune orchestration ne se termine plus tôt.
 
 `request_rate_limit_exceeded` reste distinct de
-`organization_token_quota_exhausted` et d'un `429` provenant du fournisseur IA.
-Le frontend doit donc choisir son comportement avec `code`, jamais uniquement
-avec le statut HTTP `429`.
+`organization_token_quota_exhausted` et de `ai_provider_rate_limited`. Le
+frontend choisit donc son comportement avec `code`, jamais uniquement avec le
+statut HTTP `429`.
 
 <a id="rate-limit-order"></a>
 ## Ordre des contrôles
@@ -124,15 +125,41 @@ Pour `POST /api/messages` et `POST /api/messages/stream` :
 2. Le handler valide la commande.
 3. Le service de contexte retrouve le membre et l'organisation internes.
 4. Le rate limiting évalue atomiquement les règles membre et organisation.
-5. Si une limite est atteinte, la requête s'arrête avec `429` sans incrément
-   partiel des compteurs.
-6. Sinon, les deux compteurs sont incrémentés et le lifecycle enregistre la
-   question puis prépare le traitement.
-7. L'agent peut ensuite démarrer les appels externes et produire sa réponse.
+5. Si une limite de fréquence est atteinte, la requête s'arrête avec `429`.
+6. L'API tente ensuite d'acquérir une place d'orchestration pour l'organisation.
+7. Si aucune place n'est disponible, la requête s'arrête avec `429` avant toute
+   persistance et avant tout appel au modèle.
+8. Si une place est acquise, le lifecycle enregistre la question et prépare le
+   traitement.
+9. L'agent exécute les appels externes et produit sa réponse.
+10. La place est libérée dans un `finally`, que le traitement réussisse, échoue
+    ou soit annulé.
 
-Avant l'étape 4, aucune identité fournie directement par le client n'est
-utilisée pour construire une clé de limite. Après un refus à l'étape 5, les
-étapes 6 et 7 ne démarrent pas.
+Une requête refusée parce que toutes les places sont occupées a déjà passé le
+contrôle de fréquence. Elle peut donc avoir consommé son compteur de fréquence,
+mais elle ne crée aucun message et ne consomme aucun appel modèle.
+
+<a id="rate-limit-orchestrations"></a>
+## Orchestrations simultanées
+
+Chaque place acquise reçoit un `leaseId` interne unique et une date d'expiration.
+Le store mémoire protège l'acquisition et la libération avec une opération
+synchronisée afin que des appels concurrents sur la même instance ne dépassent
+pas la limite configurée.
+
+La libération est idempotente : libérer deux fois le même lease ne retire jamais
+une deuxième place. Lorsqu'une orchestration se termine normalement, échoue ou
+est annulée, le handler libère sa place dans `finally`.
+
+Si un traitement abandonne sa place sans exécuter ce `finally`, par exemple à
+cause d'une défaillance interne inattendue du traitement dans le processus, le
+lease expiré est retiré à la prochaine tentative d'acquisition. Une place ne
+reste donc pas bloquée indéfiniment dans la mémoire d'une instance encore en
+fonctionnement.
+
+Les métriques exposent le nombre de places actives, les acquisitions refusées et
+les leases expirés. Elles ne placent aucun identifiant de membre ou
+d'organisation dans les labels.
 
 <a id="rate-limit-v1-limits"></a>
 ## Limites de la première version
@@ -141,78 +168,75 @@ Cette première version assume explicitement une seule instance de l'API.
 
 Elle ne fournit pas encore :
 
-- de compteurs partagés entre plusieurs replicas;
+- de compteurs ou de places partagés entre plusieurs replicas;
 - Redis ou un autre stockage distribué;
 - de limite générale sur tous les endpoints de l'API;
-- de limite d'orchestrations IA simultanées par organisation;
-- de bail distribué avec expiration et libération idempotente;
-- de stratégie `rate_limit_store_unavailable`, car le compteur ne dépend pas
+- de stratégie `rate_limit_store_unavailable`, car les limites ne dépendent pas
   encore d'un service externe;
-- de métriques distribuées de rate limiting;
 - de tests simulant plusieurs instances de l'API.
 
-Un redémarrage du processus remet également les compteurs mémoire à zéro. Ce
-comportement est accepté pour la première version et ne doit pas être conservé
-lorsque l'application passera à plusieurs instances.
+Un redémarrage du processus remet les compteurs à zéro et supprime tous les
+leases mémoire. Cela libère les places plutôt que de les laisser bloquées, mais
+cela signifie également que l'état de limitation n'est pas conservé entre deux
+processus. Ce comportement est accepté pour la première version et ne doit pas
+être conservé lorsque l'application passera à plusieurs instances.
 
 <a id="rate-limit-distributed"></a>
 ## Évolution Redis et multi-instance
 
-Lorsque l'API devra fonctionner avec plusieurs instances, l'interface de
-stockage du rate limiting devra recevoir une implémentation Redis sans changer
-la responsabilité des handlers.
+Lorsque l'API devra fonctionner avec plusieurs instances, les abstractions de
+stockage devront recevoir des implémentations Redis sans déplacer la logique de
+décision dans les controllers ou dans les handlers.
 
 Cette évolution devra au minimum ajouter :
 
-- une acquisition atomique des règles membre et organisation avec expiration
-  afin de conserver la même sémantique que la première version entre plusieurs
-  replicas;
-- des compteurs membre et organisation partagés par toutes les instances;
-- une limite générale configurable sur les requêtes authentifiées si elle est
-  encore nécessaire à ce moment-là;
-- une limite d'orchestrations IA simultanées par organisation;
-- des baux possédant un identifiant, une expiration et une libération
-  idempotente afin qu'un crash ne bloque pas définitivement une organisation;
+- une acquisition atomique des règles membre et organisation avec expiration;
+- des compteurs partagés par toutes les instances;
+- des places d'orchestration partagées entre les replicas;
+- des leases Redis possédant un identifiant, une expiration et une libération
+  idempotente;
 - une stratégie explicite lorsque Redis est indisponible. Pour les endpoints de
   génération coûteux, aucun appel au modèle ne doit démarrer si le système ne
   peut pas vérifier la limite;
 - une réponse contrôlée `503 rate_limit_store_unavailable` dans ce scénario;
-- des métriques par politique sans identifiant de membre ou d'organisation dans
-  les labels;
-- des tests de concurrence, d'expiration et de partage de compteur entre au
-  moins deux instances simulées.
-
-Le futur stockage Redis devra respecter le contrat applicatif existant plutôt
-que déplacer la logique de décision dans les controllers ou dans les handlers.
+- des tests de concurrence, d'expiration et de partage entre au moins deux
+  instances simulées.
 
 <a id="rate-limit-frontend"></a>
 ## Frontend
 
-Angular conserve la question, bloque temporairement l'envoi et affiche le
-temps de reprise. Il ne confond pas cette erreur avec un quota mensuel épuisé.
+Angular distingue les trois causes de `429` :
 
-Exemple : pour `request_rate_limit_exceeded` avec `retryAfterSeconds = 30`, le
-bouton peut afficher `Réessayer dans 30 s`, rester désactivé pendant le compte à
-rebours, puis redevenir disponible. Angular ne renvoie pas automatiquement la
-question à la fin du délai; l'utilisateur confirme un nouvel envoi.
+- `request_rate_limit_exceeded` : la question refusée reste dans le compositeur,
+  l'action d'envoi est bloquée pendant `retryAfterSeconds` et un compte à rebours
+  est affiché. Aucun renvoi automatique n'est effectué; l'utilisateur choisit
+  de réessayer;
+- `organization_token_quota_exhausted` : l'envoi reste bloqué jusqu'au
+  renouvellement du quota indiqué par `periodEndsAt`;
+- `ai_provider_rate_limited` : l'utilisateur reçoit un message temporaire lui
+  demandant de réessayer plus tard.
+
+Pendant un blocage, le texte du compositeur reste lisible et modifiable. Seule
+l'action d'envoi est empêchée lorsque cela est nécessaire.
 
 <a id="rate-limit-acceptance"></a>
 ## Critères d'acceptation de la première version
 
 - `POST /api/messages` et `POST /api/messages/stream` partagent les mêmes règles
-  de limite par organisation et par membre.
+  de fréquence et la même limite d'orchestrations par organisation.
 - Les limites proviennent de la configuration et sont validées au démarrage.
 - Deux membres d'une même organisation possèdent des compteurs membre distincts
   et partagent le compteur organisation.
-- Les règles membre et organisation sont acquises atomiquement : une requête
-  refusée ne consomme aucun compteur partiellement.
-- Une requête dépassant une limite retourne `429`,
+- Une organisation ne peut pas dépasser le nombre de places d'orchestration
+  configuré sur l'instance.
+- Une double libération ne rend jamais une place supplémentaire disponible.
+- Un lease abandonné peut expirer et sa place peut être récupérée.
+- Succès, erreur et annulation libèrent le lease dans `finally`.
+- Une requête refusée avant orchestration retourne `429`,
   `request_rate_limit_exceeded`, `Retry-After` et `retryAfterSeconds`.
-- Aucun lifecycle de message ni appel à l'agent ne démarre après un refus.
-- La fenêtre expire correctement et le compteur accepte de nouveau les
-  requêtes après son expiration.
-- Les fenêtres expirées ne restent pas indéfiniment dans le store mémoire.
-- Les accès concurrents au store mémoire ne permettent pas de dépasser la
-  limite configurée dans une seule instance.
-- Le code dépend d'une abstraction de stockage afin de permettre une
-  implémentation Redis ultérieure.
+- Aucun lifecycle de message ni appel à l'agent ne démarre lorsqu'aucune place
+  n'est disponible.
+- Angular distingue le rate limit applicatif, le quota d'organisation et le
+  rate limit du fournisseur, conserve une question refusée et ne la renvoie pas
+  automatiquement.
+- Le code dépend d'abstractions permettant une implémentation Redis ultérieure.

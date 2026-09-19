@@ -19,6 +19,7 @@ public sealed class SendMessageStreamCommandHandler(
     ISendMessageCommandValidator validator,
     IMessageUserContextService userContextService,
     IMessageRateLimitService rateLimitService,
+    IOrganizationOrchestrationLimitService orchestrationLimitService,
     IMessageProcessingLifecycleService lifecycleService,
     IAgentRuntime agentRuntime,
     ISendMessageResponseFactory responseFactory,
@@ -34,9 +35,17 @@ public sealed class SendMessageStreamCommandHandler(
             cancellationToken);
         var userContext = await userContextService.GetCurrentAsync(cancellationToken);
         await rateLimitService.EnsureAllowedAsync(userContext, cancellationToken);
+        var orchestrationLease = await orchestrationLimitService.AcquireAsync(
+            userContext.Organization.Id,
+            cancellationToken);
 
         var channel = Channel.CreateUnbounded<SendMessageStreamEvent>();
-        _ = ProduceAsync(validatedCommand, userContext, channel.Writer, cancellationToken);
+        _ = ProduceAsync(
+            validatedCommand,
+            userContext,
+            orchestrationLease,
+            channel.Writer,
+            cancellationToken);
 
         return channel.Reader.ReadAllAsync(cancellationToken);
     }
@@ -44,6 +53,7 @@ public sealed class SendMessageStreamCommandHandler(
     private async Task ProduceAsync(
         SendMessageCommand validatedCommand,
         MessageUserContext userContext,
+        IAsyncDisposable orchestrationLease,
         ChannelWriter<SendMessageStreamEvent> writer,
         CancellationToken cancellationToken)
     {
@@ -98,6 +108,10 @@ public sealed class SendMessageStreamCommandHandler(
                 SendMessageStreamEvent.Error,
                 new { Code = errorCode }));
             writer.TryComplete();
+        }
+        finally
+        {
+            await orchestrationLease.DisposeAsync();
         }
     }
 
@@ -177,7 +191,7 @@ public sealed class SendMessageStreamCommandHandler(
     private static string GetErrorCode(Exception exception) => exception switch
     {
         AiProviderTimeoutException => "ai_provider_timeout",
-        AiProviderLimitException => "ai_provider_limit",
+        AiProviderLimitException => "ai_provider_rate_limited",
         AiProviderUnavailableException => "ai_provider_unavailable",
         AiProviderInvalidResponseException => "ai_provider_invalid_response",
         _ => "message_generation_failed"

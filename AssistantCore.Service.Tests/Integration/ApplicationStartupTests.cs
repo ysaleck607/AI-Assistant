@@ -34,14 +34,30 @@ public sealed class ApplicationStartupTests
             });
 
         // When
-        var exception = Assert.Throws<OptionsValidationException>(() =>
-            factory.CreateClient());
+        var exception = Record.Exception(() => factory.CreateClient());
+
+        Assert.NotNull(exception);
+
+        var validationExceptions = exception switch
+        {
+            OptionsValidationException validationException => [validationException],
+            AggregateException aggregateException => aggregateException
+                .Flatten()
+                .InnerExceptions
+                .OfType<OptionsValidationException>()
+                .ToArray(),
+            _ => throw new InvalidOperationException(
+                $"Expected an options validation exception but received {exception.GetType()}.")
+        };
+
+        Assert.NotEmpty(validationExceptions);
 
         // Then
         Assert.Contains(
-            "Messages:AgentRuntime",
-            exception.Message,
-            StringComparison.Ordinal);
+            validationExceptions,
+            validationException => validationException.Message.Contains(
+                "Messages:AgentRuntime",
+                StringComparison.Ordinal));
     }
 
     [Theory, InlineAutoDomainData("medium")]

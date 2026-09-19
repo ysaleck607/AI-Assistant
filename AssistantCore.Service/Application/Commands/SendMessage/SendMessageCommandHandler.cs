@@ -16,6 +16,7 @@ public sealed class SendMessageCommandHandler(
     ISendMessageCommandValidator validator,
     IMessageUserContextService userContextService,
     IMessageRateLimitService rateLimitService,
+    IOrganizationOrchestrationLimitService orchestrationLimitService,
     IMessageProcessingLifecycleService lifecycleService,
     IAgentRuntime agentRuntime,
     ISendMessageResponseFactory responseFactory)
@@ -29,12 +30,16 @@ public sealed class SendMessageCommandHandler(
         using var activity = MessageTelemetry.Activities.StartActivity("messages.process");
         activity?.SetTag("messages.operation", "send");
         StartedMessageProcessing? processing = null;
+        IAsyncDisposable? orchestrationLease = null;
 
         try
         {
             var validatedCommand = await validator.ValidateAsync(request, cancellationToken);
             var userContext = await userContextService.GetCurrentAsync(cancellationToken);
             await rateLimitService.EnsureAllowedAsync(userContext, cancellationToken);
+            orchestrationLease = await orchestrationLimitService.AcquireAsync(
+                userContext.Organization.Id,
+                cancellationToken);
             processing = await lifecycleService.StartAsync(
                 validatedCommand.ConversationId,
                 validatedCommand.Message,
@@ -71,6 +76,11 @@ public sealed class SendMessageCommandHandler(
         }
         finally
         {
+            if (orchestrationLease is not null)
+            {
+                await orchestrationLease.DisposeAsync();
+            }
+
             MessageTelemetry.RecordDuration(
                 "messages.process.duration_ms",
                 Stopwatch.GetElapsedTime(startedAt).TotalMilliseconds);

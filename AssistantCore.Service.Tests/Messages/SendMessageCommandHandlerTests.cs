@@ -36,6 +36,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
             lifecycle,
             agentRuntime,
             new StubResponseFactory(operations, expectedResponse));
@@ -50,10 +51,12 @@ public sealed class SendMessageCommandHandlerTests
                 "Validate",
                 "ResolveUser",
                 "RateLimit",
+                "OrchestrationLimit",
                 "StartProcessing",
                 "RunAgent",
                 "CompleteProcessing",
-                "BuildResponse"
+                "BuildResponse",
+                "ReleaseOrchestration"
             ],
             operations);
         Assert.Equal(
@@ -102,6 +105,7 @@ public sealed class SendMessageCommandHandlerTests
         Assert.Equal(
             userContext.Member.Id,
             agentRuntime.ReceivedRequest.ExecutionContext.MemberId);
+        Assert.Contains("ReleaseOrchestration", operations);
     }
 
     [Theory, AutoDomainData]
@@ -197,6 +201,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
             lifecycle,
             new StubAgentRuntime(
                 operations,
@@ -219,6 +224,45 @@ public sealed class SendMessageCommandHandlerTests
             errorEvent.Data.GetType().GetProperty("Code")?.GetValue(errorEvent.Data));
         Assert.False(lifecycle.ReceivedFailure?.WasCancelled);
         Assert.IsType<AiProviderTimeoutException>(errorReporter.ReceivedException);
+        Assert.Contains("ReleaseOrchestration", operations);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AProviderRateLimit_When_HandleAsyncStreaming_Then_ReturnsStableRateLimitCode(
+        SendMessageCommand command,
+        MessageUserContext userContext,
+        StartedMessageProcessing processing,
+        AgentTurnResult agentTurnResult,
+        CompletedMessageProcessing completedProcessing,
+        SendMessageResponse response)
+    {
+        // Given
+        var operations = new List<string>();
+        var handler = new SendMessageStreamCommandHandler(
+            new StubCommandValidator(operations),
+            new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
+            new StubLifecycleService(operations, processing, completedProcessing),
+            new StubAgentRuntime(
+                operations,
+                agentTurnResult,
+                new AiProviderLimitException("Foundry")),
+            new StubResponseFactory(operations, response),
+            new StubMessageStreamErrorReporter());
+
+        // When
+        var events = await handler.HandleAsync(
+            new SendMessageStreamCommand(command.ConversationId, command.Message),
+            CancellationToken.None);
+        var receivedEvents = await ReadAllAsync(events);
+
+        // Then
+        var errorEvent = Assert.Single(receivedEvents, streamEvent =>
+            streamEvent.Name == SendMessageStreamEvent.Error);
+        Assert.Equal(
+            "ai_provider_rate_limited",
+            errorEvent.Data.GetType().GetProperty("Code")?.GetValue(errorEvent.Data));
     }
 
     [Theory, AutoDomainData]
@@ -237,6 +281,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations, expectedException),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
             new StubLifecycleService(operations, processing, completedProcessing),
             new StubAgentRuntime(operations, agentTurnResult),
             new StubResponseFactory(operations, response));
@@ -266,6 +311,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations, expectedException),
+            new StubOrganizationOrchestrationLimitService(operations),
             new StubLifecycleService(operations, processing, completedProcessing),
             new StubAgentRuntime(operations, agentTurnResult),
             new StubResponseFactory(operations, response));
@@ -280,7 +326,39 @@ public sealed class SendMessageCommandHandlerTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AnAgentFailure_When_HandleAsync_Then_FailsStartedProcessing(
+    public async Task Given_NoOrchestrationSlot_When_HandleAsync_Then_StopsBeforeStartingProcessing(
+        SendMessageCommand command,
+        MessageUserContext userContext,
+        StartedMessageProcessing processing,
+        AgentTurnResult agentTurnResult,
+        CompletedMessageProcessing completedProcessing,
+        SendMessageResponse response)
+    {
+        // Given
+        var operations = new List<string>();
+        var expectedException = new RequestRateLimitExceededException(30);
+        var handler = new SendMessageCommandHandler(
+            new StubCommandValidator(operations),
+            new StubUserContextService(operations, userContext),
+            new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations, expectedException),
+            new StubLifecycleService(operations, processing, completedProcessing),
+            new StubAgentRuntime(operations, agentTurnResult),
+            new StubResponseFactory(operations, response));
+
+        // When
+        var exception = await Record.ExceptionAsync(() =>
+            handler.HandleAsync(command, CancellationToken.None));
+
+        // Then
+        Assert.Same(expectedException, exception);
+        Assert.Equal(
+            ["Validate", "ResolveUser", "RateLimit", "OrchestrationLimit"],
+            operations);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AnAgentFailure_When_HandleAsync_Then_FailsStartedProcessingAndReleasesLease(
         SendMessageCommand command,
         MessageUserContext userContext,
         StartedMessageProcessing processing,
@@ -296,6 +374,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
             lifecycle,
             new StubAgentRuntime(operations, agentTurnResult, expectedException),
             new StubResponseFactory(operations, response));
@@ -307,7 +386,15 @@ public sealed class SendMessageCommandHandlerTests
         // Then
         Assert.Same(expectedException, exception);
         Assert.Equal(
-            ["Validate", "ResolveUser", "RateLimit", "StartProcessing", "RunAgent"],
+            [
+                "Validate",
+                "ResolveUser",
+                "RateLimit",
+                "OrchestrationLimit",
+                "StartProcessing",
+                "RunAgent",
+                "ReleaseOrchestration"
+            ],
             operations);
         Assert.Equal("message_generation_failed", lifecycle.ReceivedFailure?.ErrorCode);
     }
@@ -323,6 +410,7 @@ public sealed class SendMessageCommandHandlerTests
             new StubCommandValidator(operations),
             new StubUserContextService(operations, userContext),
             new StubMessageRateLimitService(operations),
+            new StubOrganizationOrchestrationLimitService(operations),
             new StubLifecycleService(operations, processing, completedProcessing),
             agentRuntime,
             new StubResponseFactory(operations, response),
@@ -378,6 +466,30 @@ public sealed class SendMessageCommandHandlerTests
             return exception is null
                 ? Task.CompletedTask
                 : Task.FromException(exception);
+        }
+    }
+
+    private sealed class StubOrganizationOrchestrationLimitService(
+        List<string> operations,
+        Exception? exception = null) : IOrganizationOrchestrationLimitService
+    {
+        public Task<IAsyncDisposable> AcquireAsync(
+            Guid organizationId,
+            CancellationToken cancellationToken)
+        {
+            operations.Add("OrchestrationLimit");
+            return exception is null
+                ? Task.FromResult<IAsyncDisposable>(new StubOrchestrationLease(operations))
+                : Task.FromException<IAsyncDisposable>(exception);
+        }
+    }
+
+    private sealed class StubOrchestrationLease(List<string> operations) : IAsyncDisposable
+    {
+        public ValueTask DisposeAsync()
+        {
+            operations.Add("ReleaseOrchestration");
+            return ValueTask.CompletedTask;
         }
     }
 

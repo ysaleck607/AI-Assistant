@@ -14,6 +14,15 @@ IF COL_LENGTH(N'[dbo].[OrganizationMember]', N'Email') IS NOT NULL
     AND (SELECT max_length FROM sys.columns
          WHERE object_id = OBJECT_ID(N'[dbo].[OrganizationMember]') AND name = N'Email') <> -1
 BEGIN
+    IF EXISTS (
+        SELECT 1 FROM sys.indexes
+        WHERE name = N'IX_OrganizationMember_OrganizationId_Email'
+            AND object_id = OBJECT_ID(N'[dbo].[OrganizationMember]'))
+    BEGIN
+        DROP INDEX [IX_OrganizationMember_OrganizationId_Email]
+            ON [dbo].[OrganizationMember];
+    END;
+
     ALTER TABLE [dbo].[OrganizationMember]
         ALTER COLUMN [Email] NVARCHAR(MAX) NOT NULL;
 END;

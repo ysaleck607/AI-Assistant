@@ -1,6 +1,8 @@
+using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.RateLimiting;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Infrastructure.RateLimiting;
 
@@ -10,6 +12,9 @@ public static class RateLimitingServiceCollectionExtensions
     {
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
+        services.AddSingleton<IOrganizationOrchestrationLeaseStore, InMemoryOrganizationOrchestrationLeaseStore>();
+        services.AddScoped<IOrganizationOrchestrationLimitService, OrganizationOrchestrationLimitService>();
+        services.AddSingleton<IValidateOptions<RateLimitingOptions>, OrchestrationRateLimitingOptionsValidator>();
         return services;
     }
 }

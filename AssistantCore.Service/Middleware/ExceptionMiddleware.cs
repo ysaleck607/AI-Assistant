@@ -168,7 +168,8 @@ public sealed class ExceptionMiddleware(
 
             var response = new ExceptionResponse(
                 exception.Message,
-                environment.IsDevelopment() ? exception.Message : null);
+                environment.IsDevelopment() ? exception.Message : null,
+                exception is AiProviderLimitException ? "ai_provider_rate_limited" : null);
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }
