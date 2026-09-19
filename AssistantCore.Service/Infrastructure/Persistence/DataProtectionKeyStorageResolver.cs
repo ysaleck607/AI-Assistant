@@ -44,15 +44,52 @@ public static class DataProtectionKeyStorageResolver
                 + "as soon as the other value is configured.");
         }
 
+        var parsedBlobStorageUri = ParseHttpsUri(
+            blobStorageUri,
+            nameof(DataProtectionKeyStorageOptions.BlobStorageUri));
+        var parsedKeyVaultUri = ParseHttpsUri(
+            keyVaultKeyUri,
+            nameof(DataProtectionKeyStorageOptions.KeyVaultKeyUri));
+
         return new DataProtectionKeyStorage(
             true,
-            ParseAbsoluteUri(blobStorageUri, nameof(DataProtectionKeyStorageOptions.BlobStorageUri)),
-            ParseAbsoluteUri(keyVaultKeyUri, nameof(DataProtectionKeyStorageOptions.KeyVaultKeyUri)));
+            parsedBlobStorageUri,
+            ToVersionlessKeyVaultKeyUri(parsedKeyVaultUri));
     }
 
-    private static Uri ParseAbsoluteUri(string value, string name) =>
-        Uri.TryCreate(value, UriKind.Absolute, out var uri)
-            ? uri
-            : throw new InvalidOperationException(
-                $"{DataProtectionKeyStorageOptions.SectionName}:{name} must be an absolute URI.");
+    private static Uri ParseHttpsUri(string value, string name)
+    {
+        if (!Uri.TryCreate(value, UriKind.Absolute, out var uri)
+            || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"{DataProtectionKeyStorageOptions.SectionName}:{name} must be an absolute HTTPS URI.");
+        }
+
+        return uri;
+    }
+
+    private static Uri ToVersionlessKeyVaultKeyUri(Uri keyVaultKeyUri)
+    {
+        var segments = keyVaultKeyUri.AbsolutePath
+            .Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if ((segments.Length != 2 && segments.Length != 3)
+            || !string.Equals(segments[0], "keys", StringComparison.OrdinalIgnoreCase)
+            || string.IsNullOrWhiteSpace(segments[1])
+            || (segments.Length == 3 && string.IsNullOrWhiteSpace(segments[2])))
+        {
+            throw new InvalidOperationException(
+                $"{DataProtectionKeyStorageOptions.SectionName}:{nameof(DataProtectionKeyStorageOptions.KeyVaultKeyUri)} "
+                + "must reference a Key Vault key URI in the form /keys/{key-name} or /keys/{key-name}/{key-version}.");
+        }
+
+        var builder = new UriBuilder(keyVaultKeyUri)
+        {
+            Path = $"/keys/{segments[1]}",
+            Query = string.Empty,
+            Fragment = string.Empty
+        };
+
+        return builder.Uri;
+    }
 }

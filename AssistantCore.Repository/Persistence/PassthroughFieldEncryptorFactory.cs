@@ -9,7 +9,8 @@ public sealed class PassthroughFieldEncryptorFactory : IFieldEncryptorFactory
 {
     public static readonly PassthroughFieldEncryptorFactory Instance = new();
 
-    public IFieldEncryptor CreateFor(string purpose) => PassthroughFieldEncryptor.Instance;
+    public IFieldEncryptor CreateFor(string purpose, Guid? organizationId = null) =>
+        PassthroughFieldEncryptor.Instance;
 
     private sealed class PassthroughFieldEncryptor : IFieldEncryptor
     {
