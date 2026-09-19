@@ -26,12 +26,6 @@ public sealed class ConversationConfiguration(IFieldEncryptor titleEncryptor) : 
             .HasColumnType("nvarchar(max)")
             .IsRequired();
 
-        builder.Property(conversation => conversation.ContextSummary)
-            .HasColumnType("nvarchar(max)");
-
-        builder.Property(conversation => conversation.ContextSummaryUpdatedAt)
-            .HasColumnType("datetimeoffset");
-
         builder.Property(conversation => conversation.Status)
             .HasConversion<string>()
             .HasMaxLength(20)
@@ -71,16 +65,11 @@ public sealed class ConversationConfiguration(IFieldEncryptor titleEncryptor) : 
         {
             conversation.OrganizationId,
             conversation.OwnerMemberId,
-            conversation.Id
-        });
-
-        builder.HasIndex(conversation => new
-        {
-            conversation.OrganizationId,
-            conversation.OwnerMemberId,
             conversation.Status,
             conversation.UpdatedAt,
             conversation.Id
-        });
+        })
+            .HasFilter("[DeletedAt] IS NULL")
+            .HasDatabaseName("IX_Conversation_ActiveListing");
     }
 }

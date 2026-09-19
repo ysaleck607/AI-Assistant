@@ -1,5 +1,4 @@
 using AssistantCore.Repository.Domain.Entities;
-using AssistantCore.Repository.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -19,9 +18,7 @@ public sealed class OrganizationConnectorSourceConfiguration : IEntityTypeConfig
             .IsRequired();
 
         builder.Property(source => source.Status)
-            .HasConversion(
-                status => status == RecordStatus.Active ? "Actif" : "Inactif",
-                value => value == "Actif" ? RecordStatus.Active : RecordStatus.Inactive)
+            .HasConversion<string>()
             .HasMaxLength(20)
             .IsRequired();
 

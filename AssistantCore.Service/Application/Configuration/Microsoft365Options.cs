@@ -70,7 +70,7 @@ public sealed class Microsoft365Options
 
     public long MaximumArchiveExpandedSizeBytes { get; init; } = 200 * 1024 * 1024;
 
-    public int MaximumArchiveEntries { get; init; } = 1000;
+    public int MaximumArchiveEntries { get; init; } = 1_000;
 
     public int MaximumArchiveDepth { get; init; } = 2;
 
@@ -94,11 +94,11 @@ public sealed class Microsoft365Options
 
     public string EmbeddingApiKey { get; init; } = string.Empty;
 
-    public string EmbeddingModel { get; init; } = "text-embedding-3-small";
-
     public string EmbeddingDeploymentName { get; init; } = string.Empty;
 
     public string EmbeddingApiVersion { get; init; } = "2024-06-01";
+
+    public string EmbeddingModel { get; init; } = "text-embedding-3-small";
 
     public int EmbeddingDimensions { get; init; } = 1536;
 

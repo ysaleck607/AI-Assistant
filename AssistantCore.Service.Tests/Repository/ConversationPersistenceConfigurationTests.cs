@@ -25,6 +25,8 @@ public sealed class ConversationPersistenceConfigurationTests
             entityType,
             nameof(Conversation.OrganizationId),
             nameof(Conversation.OwnerMemberId),
+            nameof(Conversation.Status),
+            nameof(Conversation.UpdatedAt),
             nameof(Conversation.Id));
         AssertForeignKey(
             entityType,

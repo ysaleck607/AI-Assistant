@@ -15,6 +15,7 @@ public sealed class Microsoft365ConnectionConfiguration : IEntityTypeConfigurati
         builder.Property(connection => connection.TenantId).HasMaxLength(100);
         builder.Property(connection => connection.Status).HasConversion<string>().HasMaxLength(30).IsRequired();
         builder.Property(connection => connection.ConsentStateHash).HasMaxLength(64);
+        builder.Property(connection => connection.OnboardingCompletedAt);
         builder.Property(connection => connection.LastErrorCode).HasMaxLength(100);
         builder.Property(connection => connection.CreatedAt).IsRequired();
         builder.Property(connection => connection.UpdatedAt).IsRequired();

@@ -17,8 +17,8 @@ public sealed class PurgeOperation
     public PurgeOperationScope Scope { get; set; }
 
     /// <summary>
-    /// Identifiant de l'element purge dans sa propre table (TokenConsumption,
-    /// Microsoft365IndexedContent, Microsoft365DocumentWork, etc. selon Scope).
+    /// Identifiant de l'element purge dans la table correspondant au Scope
+    /// (contenu de recherche, travail d'ingestion, audit, etc.).
     /// </summary>
     public Guid TargetId { get; set; }
 

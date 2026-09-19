@@ -1,7 +1,6 @@
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Models.Messages.AgenticRetrieval;
-using AssistantCore.Service.Application.Models.Messages.AiModels;
 using AssistantCore.Service.Application.Models.Messages.Connectors;
 using AssistantCore.Service.Application.Models.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Models.Messages.Evidence;
@@ -23,8 +22,6 @@ public sealed class Microsoft365Connector(
     IEvidenceNormalizer evidenceNormalizer,
     ILogger<Microsoft365Connector>? logger = null) : IMicrosoft365Connector
 {
-    private const int MaximumRetrievalHistoryMessages = 6;
-
     public async Task<ConnectorResult> SearchAsync(
         SearchMicrosoft365ToolArguments request,
         ConnectorExecutionContext context,
@@ -99,7 +96,7 @@ public sealed class Microsoft365Connector(
         var result = await agenticRetrievalClient.RetrieveAsync(
             new AgenticRetrievalRequest(
                 request.Query,
-                MapConversationHistory(context.ConversationHistory),
+                [],
                 configuration.KnowledgeBaseName,
                 configuration.KnowledgeSourceName,
                 filter,
@@ -187,13 +184,4 @@ public sealed class Microsoft365Connector(
         record.Url,
         record.ModifiedAt,
         record.RelevanceScore);
-
-    private static IReadOnlyCollection<AgenticRetrievalMessage> MapConversationHistory(
-        IReadOnlyCollection<AiConversationMessage>? conversationHistory) =>
-        conversationHistory?
-            .Where(message => !string.IsNullOrWhiteSpace(message.Content))
-            .TakeLast(MaximumRetrievalHistoryMessages)
-            .Select(message => new AgenticRetrievalMessage(message.Role, message.Content))
-            .ToArray()
-        ?? [];
 }

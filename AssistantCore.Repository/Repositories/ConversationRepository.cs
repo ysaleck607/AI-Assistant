@@ -12,7 +12,9 @@ public sealed class ConversationRepository(
     : IConversationRepository
 {
     private const int InitialConversationVersion = 1;
-    private const int MaximumAgentHistoryMessages = 20;
+    // Keep five recent user/assistant exchanges. Retrieval receives the current tool query,
+    // while this bounded window is only for conversational follow-ups and reference resolution.
+    private const int MaximumAgentHistoryMessages = 10;
 
     public async Task<(Conversation Conversation, Message UserMessage)> CreateConversationWithFirstMessageAsync(
         Guid organizationId,
@@ -21,18 +23,9 @@ public sealed class ConversationRepository(
         Message userMessage,
         CancellationToken cancellationToken = default)
     {
-        ValidateIdentifier(
-            conversation.OrganizationId,
-            organizationId,
-            nameof(conversation.OrganizationId));
-        ValidateIdentifier(
-            conversation.OwnerMemberId,
-            ownerMemberId,
-            nameof(conversation.OwnerMemberId));
-        ValidateIdentifier(
-            userMessage.ConversationId,
-            conversation.Id,
-            nameof(userMessage.ConversationId));
+        ValidateIdentifier(conversation.OrganizationId, organizationId, nameof(conversation.OrganizationId));
+        ValidateIdentifier(conversation.OwnerMemberId, ownerMemberId, nameof(conversation.OwnerMemberId));
+        ValidateIdentifier(userMessage.ConversationId, conversation.Id, nameof(userMessage.ConversationId));
 
         conversation.OrganizationId = organizationId;
         conversation.OwnerMemberId = ownerMemberId;
@@ -112,11 +105,7 @@ public sealed class ConversationRepository(
 
         page.Reverse();
 
-        return new ConversationMessagePage(
-            page,
-            hasMore,
-            oldest?.CreatedAt,
-            oldest?.Id);
+        return new ConversationMessagePage(page, hasMore, oldest?.CreatedAt, oldest?.Id);
     }
 
     public async Task<IReadOnlyList<ConversationMessageItem>> GetConversationHistoryAsync(
@@ -132,8 +121,7 @@ public sealed class ConversationRepository(
                 && message.Conversation.OrganizationId == organizationId
                 && message.Conversation.OwnerMemberId == ownerMemberId
                 && message.Conversation.DeletedAt == null
-                && message.ProcessingStatus == MessageProcessingStatus.Completed
-                && !message.Sources.Any(source => source.SourceType == "Microsoft365"))
+                && message.ProcessingStatus == MessageProcessingStatus.Completed)
             .OrderByDescending(message => message.CreatedAt)
             .ThenByDescending(message => message.Id)
             .Take(MaximumAgentHistoryMessages)
@@ -152,24 +140,18 @@ public sealed class ConversationRepository(
         return messages;
     }
 
-    public async Task<(Conversation Conversation, IReadOnlyList<ConversationMessageItem> History)?>
-        StartExistingConversationMessageAsync(
-            Guid organizationId,
-            Guid ownerMemberId,
-            Guid conversationId,
-            Message userMessage,
-            CancellationToken cancellationToken = default)
+    public async Task<(Conversation Conversation, IReadOnlyList<ConversationMessageItem> History)?> StartExistingConversationMessageAsync(
+        Guid organizationId,
+        Guid ownerMemberId,
+        Guid conversationId,
+        Message userMessage,
+        CancellationToken cancellationToken = default)
     {
-        ValidateIdentifier(
-            userMessage.ConversationId,
-            conversationId,
-            nameof(userMessage.ConversationId));
+        ValidateIdentifier(userMessage.ConversationId, conversationId, nameof(userMessage.ConversationId));
 
         var conversation = await dbContext.Conversations
             .Include(candidate => candidate.Messages
-                .Where(message =>
-                    message.ProcessingStatus == MessageProcessingStatus.Completed
-                    && !message.Sources.Any(source => source.SourceType == "Microsoft365"))
+                .Where(message => message.ProcessingStatus == MessageProcessingStatus.Completed)
                 .OrderByDescending(message => message.CreatedAt)
                 .ThenByDescending(message => message.Id)
                 .Take(MaximumAgentHistoryMessages))
@@ -258,10 +240,7 @@ public sealed class ConversationRepository(
             .ToListAsync(cancellationToken);
 
         var hasMore = items.Count > limit;
-
-        return new ConversationListPage(
-            hasMore ? items.Take(limit).ToList() : items,
-            hasMore);
+        return new ConversationListPage(hasMore ? items.Take(limit).ToList() : items, hasMore);
     }
 
     public async Task<Message?> AddUserMessageAsync(
@@ -271,10 +250,7 @@ public sealed class ConversationRepository(
         Message userMessage,
         CancellationToken cancellationToken = default)
     {
-        ValidateIdentifier(
-            userMessage.ConversationId,
-            conversationId,
-            nameof(userMessage.ConversationId));
+        ValidateIdentifier(userMessage.ConversationId, conversationId, nameof(userMessage.ConversationId));
 
         var conversation = await dbContext.Conversations
             .SingleOrDefaultAsync(
@@ -297,7 +273,6 @@ public sealed class ConversationRepository(
 
         dbContext.Messages.Add(userMessage);
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return userMessage;
     }
 
@@ -329,7 +304,6 @@ public sealed class ConversationRepository(
         message.ProcessingStatus = status;
         message.UpdatedAt = updatedAt;
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return true;
     }
 
@@ -382,9 +356,7 @@ public sealed class ConversationRepository(
         userMessage.UpdatedAt = completedAt;
         userMessage.Conversation.UpdatedAt = completedAt;
         dbContext.Messages.Add(assistantMessage);
-
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return assistantMessage;
     }
 
@@ -398,8 +370,7 @@ public sealed class ConversationRepository(
         DateTimeOffset failedAt,
         CancellationToken cancellationToken = default)
     {
-        if (failureStatus is not MessageProcessingStatus.Failed
-            and not MessageProcessingStatus.Cancelled)
+        if (failureStatus is not MessageProcessingStatus.Failed and not MessageProcessingStatus.Cancelled)
         {
             throw new ArgumentOutOfRangeException(
                 nameof(failureStatus),
@@ -408,6 +379,7 @@ public sealed class ConversationRepository(
         }
 
         var userMessage = await dbContext.Messages
+            .Include(message => message.Conversation)
             .SingleOrDefaultAsync(
                 message =>
                     message.Id == userMessageId
@@ -427,9 +399,8 @@ public sealed class ConversationRepository(
         userMessage.ProcessingStatus = failureStatus;
         userMessage.ProcessingErrorCode = errorCode;
         userMessage.UpdatedAt = failedAt;
-
+        userMessage.Conversation.UpdatedAt = failedAt;
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return true;
     }
 
@@ -527,9 +498,7 @@ public sealed class ConversationRepository(
         }
 
         var alreadyRequested = await dbContext.ConversationPurgeRequests
-            .AnyAsync(
-                request => request.ConversationId == conversationId,
-                cancellationToken);
+            .AnyAsync(request => request.ConversationId == conversationId, cancellationToken);
 
         if (conversation.DeletedAt is not null && alreadyRequested)
         {
@@ -564,12 +533,12 @@ public sealed class ConversationRepository(
                 OrganizationId = organizationId,
                 RequestedAt = deletedAt,
                 PurgeAfter = purgeAfter,
-                Status = ConversationPurgeStatus.Pending
+                Status = ConversationPurgeStatus.Pending,
+                Step = ConversationPurgeStep.DeleteMessages
             });
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
-
         return ConversationDeleteStatus.Deleted;
     }
 
@@ -637,15 +606,12 @@ public sealed class ConversationRepository(
         return totalProcessed;
     }
 
-    private static void ValidateIdentifier(
-        Guid currentValue,
-        Guid expectedValue,
-        string parameterName)
+    private static void ValidateIdentifier(Guid actual, Guid expected, string parameterName)
     {
-        if (currentValue != Guid.Empty && currentValue != expectedValue)
+        if (actual != Guid.Empty && actual != expected)
         {
             throw new ArgumentException(
-                $"{parameterName} does not match the authenticated context.",
+                $"{parameterName} does not match the requested resource identifier.",
                 parameterName);
         }
     }

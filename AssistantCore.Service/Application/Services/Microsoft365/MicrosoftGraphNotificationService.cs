@@ -14,26 +14,23 @@ public sealed class MicrosoftGraphNotificationService(
         IReadOnlyCollection<MicrosoftGraphNotification> notifications,
         CancellationToken cancellationToken = default)
     {
-        foreach (var notification in notifications)
-        {
-            if (string.IsNullOrWhiteSpace(notification.SubscriptionId)
-                || string.IsNullOrWhiteSpace(notification.ClientState)
-                || string.IsNullOrWhiteSpace(notification.TenantId))
-            {
-                continue;
-            }
+        var validNotifications = notifications
+            .Where(notification =>
+                !string.IsNullOrWhiteSpace(notification.SubscriptionId)
+                && !string.IsNullOrWhiteSpace(notification.ClientState)
+                && !string.IsNullOrWhiteSpace(notification.TenantId))
+            .GroupBy(notification => notification.SubscriptionId, StringComparer.OrdinalIgnoreCase);
 
+        foreach (var subscriptionNotifications in validNotifications)
+        {
             var subscription = await subscriptionRepository.FindActiveForNotificationAsync(
-                notification.SubscriptionId,
+                subscriptionNotifications.Key!,
                 cancellationToken);
             var now = timeProvider.GetUtcNow();
             if (subscription is null
                 || subscription.ExpiresAt is null
                 || subscription.ExpiresAt <= now
-                || string.IsNullOrWhiteSpace(subscription.ProtectedClientState)
-                || !clientStateProtector.Matches(
-                    notification.ClientState,
-                    subscription.ProtectedClientState))
+                || string.IsNullOrWhiteSpace(subscription.ProtectedClientState))
             {
                 continue;
             }
@@ -43,11 +40,21 @@ public sealed class MicrosoftGraphNotificationService(
             if (!source.IsIndexed
                 || source.Status != Microsoft365SourceStatus.Enabled
                 || connection.Status != Microsoft365ConnectionStatus.Active
-                || connection.OrganizationConnector.Status != RecordStatus.Active
-                || !string.Equals(
+                || connection.OrganizationConnector.Status != RecordStatus.Active)
+            {
+                continue;
+            }
+
+            var hasTrustedNotification = subscriptionNotifications.Any(notification =>
+                clientStateProtector.Matches(
+                    notification.ClientState!,
+                    subscription.ProtectedClientState)
+                && string.Equals(
                     notification.TenantId,
                     connection.TenantId,
-                    StringComparison.OrdinalIgnoreCase))
+                    StringComparison.OrdinalIgnoreCase));
+
+            if (!hasTrustedNotification)
             {
                 continue;
             }

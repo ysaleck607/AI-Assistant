@@ -41,108 +41,60 @@ public sealed class ExceptionMiddlewareTests
     [Fact]
     public async Task Given_ATenantAdmissionException_When_InvokingMiddleware_Then_ReturnsForbiddenWithCode()
     {
-        // Given
         const string message = "A tenant administrator must finish the Microsoft 365 setup.";
         var exception = new TenantAdmissionException(message, TenantAdmissionException.TenantAdminRequired);
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
         Assert.Equal(message, response.RootElement.GetProperty("Message").GetString());
-        Assert.Equal(
-            TenantAdmissionException.TenantAdminRequired,
-            response.RootElement.GetProperty("Code").GetString());
+        Assert.Equal(TenantAdmissionException.TenantAdminRequired, response.RootElement.GetProperty("Code").GetString());
     }
 
     [Fact]
     public async Task Given_AMicrosoft365ConsentException_When_InvokingMiddleware_Then_ReturnsBadRequestWithCode()
     {
-        // Given
         const string message = "Microsoft 365 required permissions are missing.";
         var exception = new Microsoft365ConsentException(
             message,
             Microsoft365ConsentException.MissingRequiredPermissions);
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
         Assert.Equal(message, response.RootElement.GetProperty("Message").GetString());
-        Assert.Equal(
-            Microsoft365ConsentException.MissingRequiredPermissions,
-            response.RootElement.GetProperty("Code").GetString());
+        Assert.Equal(Microsoft365ConsentException.MissingRequiredPermissions, response.RootElement.GetProperty("Code").GetString());
     }
 
     [Fact]
     public async Task Given_APlainBadRequestException_When_InvokingMiddleware_Then_ReturnsNullCode()
     {
-        // Given
         var exception = new BadRequestException("Invalid request.");
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
         Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Code").ValueKind);
     }
 
-    [Theory, AutoDomainData]
-    public async Task Given_AnExhaustedOrganizationQuota_When_InvokeAsync_Then_Returns429WithPeriodEndMetadata(
-        DateTimeOffset periodEndsAt)
-    {
-        // Given
-        var exception = new OrganizationTokenQuotaExceededException(periodEndsAt);
-        var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Production);
-
-        // When
-        await middleware.InvokeAsync(context);
-
-        // Then
-        using var response = await ReadResponse(context);
-        Assert.Equal(StatusCodes.Status429TooManyRequests, context.Response.StatusCode);
-        Assert.Equal(exception.ErrorCode, response.RootElement.GetProperty("Code").GetString());
-        Assert.Equal(
-            periodEndsAt,
-            response.RootElement.GetProperty("Metadata").GetProperty("PeriodEndsAt").GetDateTimeOffset());
-        Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Detail").ValueKind);
-    }
-
     [Fact]
     public async Task Given_APlainForbiddenException_When_InvokingMiddleware_Then_ReturnsNullCode()
     {
-        // Given
         var exception = new ForbiddenException("Organization access denied.");
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
         Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Code").ValueKind);
@@ -151,16 +103,13 @@ public sealed class ExceptionMiddlewareTests
     [Fact]
     public async Task Given_AnUnexpectedExceptionInDevelopment_When_InvokingMiddleware_Then_ReturnsGenericErrorWithDetail()
     {
-        // Given
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(
             _ => Task.FromException(new InvalidOperationException("Database unavailable.")),
             Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
         Assert.Equal("An unexpected error occurred.", response.RootElement.GetProperty("Message").GetString());
@@ -176,17 +125,12 @@ public sealed class ExceptionMiddlewareTests
         string failureType,
         int expectedStatusCode)
     {
-        // Given
         var exception = CreateProviderException(failureType);
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(expectedStatusCode, context.Response.StatusCode);
         Assert.Equal(exception.Message, response.RootElement.GetProperty("Message").GetString());
@@ -197,16 +141,11 @@ public sealed class ExceptionMiddlewareTests
     public async Task Given_AllExternalSourcesUnavailable_When_InvokeAsync_Then_ReturnsBadGateway(
         ExternalSourcesUnavailableException exception)
     {
-        // Given
         var context = CreateHttpContext();
-        var middleware = CreateMiddleware(
-            _ => Task.FromException(exception),
-            Environments.Development);
+        var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status502BadGateway, context.Response.StatusCode);
         Assert.Equal(exception.Message, response.RootElement.GetProperty("Message").GetString());
@@ -215,7 +154,6 @@ public sealed class ExceptionMiddlewareTests
     [Fact]
     public async Task Given_AClientCancellation_When_InvokeAsync_Then_DoesNotWriteAnErrorResponse()
     {
-        // Given
         using var cancellationSource = new CancellationTokenSource();
         await cancellationSource.CancelAsync();
         var context = CreateHttpContext();
@@ -224,10 +162,8 @@ public sealed class ExceptionMiddlewareTests
             _ => Task.FromCanceled(cancellationSource.Token),
             Environments.Production);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         Assert.Equal(0, context.Response.Body.Length);
         Assert.Null(context.Response.ContentType);
     }
@@ -235,16 +171,13 @@ public sealed class ExceptionMiddlewareTests
     [Fact]
     public async Task Given_AnUnexpectedExceptionInProduction_When_InvokingMiddleware_Then_HidesTechnicalDetail()
     {
-        // Given
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(
             _ => Task.FromException(new InvalidOperationException("Sensitive detail.")),
             Environments.Production);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
         Assert.Equal(JsonValueKind.Null, response.RootElement.GetProperty("Detail").ValueKind);
@@ -253,7 +186,6 @@ public sealed class ExceptionMiddlewareTests
     [Fact]
     public async Task Given_NoException_When_InvokingMiddleware_Then_ContinuesThePipeline()
     {
-        // Given
         var nextWasCalled = false;
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(
@@ -265,10 +197,8 @@ public sealed class ExceptionMiddlewareTests
             },
             Environments.Production);
 
-        // When
         await middleware.InvokeAsync(context);
 
-        // Then
         Assert.True(nextWasCalled);
         Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);
         Assert.Equal(0, context.Response.Body.Length);

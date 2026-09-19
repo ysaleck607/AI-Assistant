@@ -1,5 +1,6 @@
 using AssistantCore.Repository.Persistence;
 using AssistantCore.Service.Application;
+using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Infrastructure.Microsoft365;
 using AssistantCore.Service.Infrastructure.Persistence;
 using System.Reflection;
@@ -37,8 +38,16 @@ public static class WorkerProgram
                 $"{Microsoft365WorkerOptions.SectionName}:MaintenanceIntervalSeconds must be greater than zero.")
             .Validate(
                 options => options.MaximumSynchronizationsPerCycle > 0
-                    && options.MaximumDocumentsPerCycle > 0,
+                    && options.MaximumDocumentsPerCycle > 0
+                    && options.MaximumListItemsPerCycle > 0,
                 $"{Microsoft365WorkerOptions.SectionName} batch sizes must be greater than zero.")
+            .ValidateOnStart();
+
+        builder.Services.AddOptions<RetentionOptions>()
+            .Bind(builder.Configuration.GetSection(RetentionOptions.SectionName))
+            .Validate(
+                options => options.IsValid(),
+                $"{RetentionOptions.SectionName} requires a positive retention duration for every category.")
             .ValidateOnStart();
 
         builder.Services.AddMicrosoft365WorkerApplication();

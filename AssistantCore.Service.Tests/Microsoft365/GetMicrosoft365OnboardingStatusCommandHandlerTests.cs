@@ -16,7 +16,8 @@ public sealed class GetMicrosoft365OnboardingStatusCommandHandlerTests
             ConnectionStatus: "Active",
             IsConsentComplete: true,
             HasSelectedSite: true,
-            HasIndexedSource: true);
+            HasIndexedSource: true,
+            HasCompletedInitialSetup: true);
         var service = new StubOnboardingService(status);
         var handler = new GetMicrosoft365OnboardingStatusCommandHandler(service);
 

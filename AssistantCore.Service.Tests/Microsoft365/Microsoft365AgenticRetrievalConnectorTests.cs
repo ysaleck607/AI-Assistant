@@ -15,7 +15,7 @@ namespace AssistantCore.Service.Tests.Microsoft365;
 public sealed class Microsoft365AgenticRetrievalConnectorTests
 {
     [Theory, InlineAutoDomainData("code projet Atlas")]
-    public async Task Given_AValidRequest_When_SearchAsync_Then_RetrievesWithConversationAndAclFilter(
+    public async Task Given_AValidRequestAndPreviousTopic_When_SearchAsync_Then_RetrievesCurrentQueryWithoutConversationHistory(
         string query,
         Guid organizationId,
         Guid memberId,
@@ -51,8 +51,8 @@ public sealed class Microsoft365AgenticRetrievalConnectorTests
         {
             ConversationHistory =
             [
-                new AiConversationMessage(AiConversationRole.User, "parle-moi du projet Atlas"),
-                new AiConversationMessage(AiConversationRole.Assistant, "Atlas est un projet suivi.")
+                new AiConversationMessage(AiConversationRole.User, "combien dois-je payer à Microsoft ?"),
+                new AiConversationMessage(AiConversationRole.Assistant, "La facture Microsoft est de 26,22 $.")
             ]
         };
 
@@ -73,7 +73,7 @@ public sealed class Microsoft365AgenticRetrievalConnectorTests
         Assert.Equal(query, request.Query);
         Assert.Equal(50, request.RetrievalCandidateLimit);
         Assert.Equal(10, request.FinalEvidenceLimit);
-        Assert.Equal(2, request.ConversationHistory.Count);
+        Assert.Empty(request.ConversationHistory);
         Assert.Contains($"organizationId eq '{organizationId:D}'", request.Filter, StringComparison.Ordinal);
         Assert.Contains($"allowedUserIds/any(id: id eq '{entraUserId:D}')", request.Filter, StringComparison.Ordinal);
         Assert.Contains(entraGroupId.ToString("D"), request.Filter, StringComparison.Ordinal);
@@ -257,5 +257,4 @@ public sealed class Microsoft365AgenticRetrievalConnectorTests
             CancellationToken cancellationToken) =>
             Task.FromResult(groupIds);
     }
-
 }

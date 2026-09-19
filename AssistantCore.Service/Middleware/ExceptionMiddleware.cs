@@ -99,19 +99,6 @@ public sealed class ExceptionMiddleware(
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }
-        catch (OrganizationTokenQuotaExceededException exception)
-        {
-            context.Response.StatusCode = StatusCodes.Status429TooManyRequests;
-            context.Response.ContentType = "application/json";
-
-            var response = new ExceptionResponse(
-                exception.Message,
-                environment.IsDevelopment() ? exception.Message : null,
-                exception.ErrorCode,
-                new { exception.PeriodEndsAt });
-
-            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
-        }
         catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
         {
             logger.LogInformation("The client cancelled the request.");

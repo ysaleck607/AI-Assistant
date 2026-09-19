@@ -16,10 +16,13 @@ env:
 
 jobs:
   publish:
-    name: Build and publish immutable images
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    name: Build, scan and publish immutable images
+    if: >-
+      ${{ github.event.workflow_run.conclusion == 'success'
+          && github.event.workflow_run.event == 'push'
+          && github.event.workflow_run.head_branch == 'master' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     environment: publish-images
     concurrency:
       group: publish-backend-images
@@ -27,12 +30,12 @@ jobs:
 
     steps:
       - name: Checkout validated commit
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -41,18 +44,101 @@ jobs:
       - name: Sign in to ACR
         run: az acr login --name "$ACR_NAME"
 
-      - name: Build and push immutable images
+      - name: Build immutable images locally
         env:
           COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           IMAGE_TAG="sha-${COMMIT_SHA}"
           LOGIN_SERVER="${ACR_NAME}.azurecr.io"
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> "$GITHUB_ENV"
+          echo "LOGIN_SERVER=${LOGIN_SERVER}" >> "$GITHUB_ENV"
+          mkdir -p artifacts/sbom
 
           docker build --file deploy/docker/api.Dockerfile --tag "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}" .
+          docker build --file deploy/docker/bff.Dockerfile --tag "${LOGIN_SERVER}/assistant-bff:${IMAGE_TAG}" .
           docker build --file deploy/docker/worker.Dockerfile --tag "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}" .
           docker build --file AssistantCore.Repository/Database/Flyway/Dockerfile --tag "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}" AssistantCore.Repository/Database/Flyway
 
+      - name: Scan API image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-api:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Scan BFF image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-bff:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Scan Worker image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-worker:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Scan migrations image
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-migrations:${{ env.IMAGE_TAG }}
+          format: table
+          exit-code: "1"
+          ignore-unfixed: true
+          severity: HIGH,CRITICAL
+
+      - name: Generate API SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-api:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: artifacts/sbom/assistant-api.cdx.json
+          exit-code: "0"
+
+      - name: Generate BFF SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-bff:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: artifacts/sbom/assistant-bff.cdx.json
+          exit-code: "0"
+
+      - name: Generate Worker SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-worker:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: artifacts/sbom/assistant-worker.cdx.json
+          exit-code: "0"
+
+      - name: Generate migrations SBOM
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.LOGIN_SERVER }}/assistant-migrations:${{ env.IMAGE_TAG }}
+          format: cyclonedx
+          output: artifacts/sbom/assistant-migrations.cdx.json
+          exit-code: "0"
+
+      - name: Upload backend SBOMs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: backend-sboms-${{ env.IMAGE_TAG }}
+          path: artifacts/sbom/*.cdx.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Push validated images
+        run: |
           docker push "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}"
+          docker push "${LOGIN_SERVER}/assistant-bff:${IMAGE_TAG}"
           docker push "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}"
           docker push "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}"
 
@@ -60,6 +146,11 @@ jobs:
             echo "### Backend images published"
             echo
             echo "Image tag: \`${IMAGE_TAG}\`"
+            echo
+            echo "Security gate: Trivy HIGH/CRITICAL fixed vulnerabilities passed."
+            echo "SBOM: CycloneDX artifacts retained for 90 days."
+            echo
+            echo "Published: assistant-api, assistant-bff, assistant-worker, assistant-migrations."
             echo
             echo "Use this tag when creating a CERTIF release candidate."
           } >> "$GITHUB_STEP_SUMMARY"

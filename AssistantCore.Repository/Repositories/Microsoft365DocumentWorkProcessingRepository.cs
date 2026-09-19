@@ -23,11 +23,11 @@ public sealed class Microsoft365DocumentWorkProcessingRepository(AssistantCoreDb
             .Include(candidate => candidate.Microsoft365Source)
                 .ThenInclude(source => source.Microsoft365Connection)
             .Where(candidate =>
-                (candidate.Status == Microsoft365DocumentWorkStatus.Pending
-                    || candidate.Status == Microsoft365DocumentWorkStatus.TemporaryFailure
-                        && (candidate.NextAttemptAt == null || candidate.NextAttemptAt <= now)
-                    || candidate.Status == Microsoft365DocumentWorkStatus.Processing
-                        && candidate.LeaseExpiresAt <= now))
+                candidate.Status == Microsoft365DocumentWorkStatus.Pending
+                || candidate.Status == Microsoft365DocumentWorkStatus.TemporaryFailure
+                    && (candidate.NextAttemptAt == null || candidate.NextAttemptAt <= now)
+                || candidate.Status == Microsoft365DocumentWorkStatus.Processing
+                    && candidate.LeaseExpiresAt <= now)
             .OrderBy(candidate => candidate.CreatedAt)
             .FirstOrDefaultAsync(cancellationToken);
 
@@ -66,12 +66,14 @@ public sealed class Microsoft365DocumentWorkProcessingRepository(AssistantCoreDb
         Microsoft365DocumentWork work,
         bool isPermanent,
         string errorCode,
+        DateTimeOffset failedAt,
         DateTimeOffset nextAttemptAt,
         CancellationToken cancellationToken = default)
     {
         work.Status = isPermanent
             ? Microsoft365DocumentWorkStatus.PermanentFailure
             : Microsoft365DocumentWorkStatus.TemporaryFailure;
+        work.CompletedAt = isPermanent ? failedAt : null;
         work.LeaseId = null;
         work.LeaseExpiresAt = null;
         work.NextAttemptAt = isPermanent ? null : nextAttemptAt;

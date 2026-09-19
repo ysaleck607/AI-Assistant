@@ -32,6 +32,20 @@ public sealed class Microsoft365ListItemWork
 
     public string DeduplicationKey { get; set; } = string.Empty;
 
+    public Microsoft365ListItemWorkStatus Status { get; set; }
+
+    public int AttemptCount { get; set; }
+
+    public Guid? LeaseId { get; set; }
+
+    public DateTimeOffset? LeaseExpiresAt { get; set; }
+
+    public DateTimeOffset? NextAttemptAt { get; set; }
+
+    public DateTimeOffset? CompletedAt { get; set; }
+
+    public string? LastErrorCode { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public Organization Organization { get; set; } = null!;

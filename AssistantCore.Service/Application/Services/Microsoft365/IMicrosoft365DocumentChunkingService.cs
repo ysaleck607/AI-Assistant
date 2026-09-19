@@ -26,5 +26,6 @@ public interface IMicrosoft365DocumentChunkingService
         string? url,
         DateTimeOffset? modifiedAt,
         string content,
-        string sourceType);
+        string sourceType,
+        string? siteId = null);
 }

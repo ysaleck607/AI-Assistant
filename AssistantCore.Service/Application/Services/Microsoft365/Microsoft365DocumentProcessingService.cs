@@ -67,11 +67,13 @@ public sealed class Microsoft365DocumentProcessingService(
                 exception,
                 work.AttemptCount,
                 options.Value);
+            var failedAt = timeProvider.GetUtcNow();
             await workRepository.FailAsync(
                 work,
                 failure.IsPermanent,
                 GetErrorCode(exception),
-                timeProvider.GetUtcNow().Add(failure.RetryDelay),
+                failedAt,
+                failedAt.Add(failure.RetryDelay),
                 cancellationToken);
         }
 

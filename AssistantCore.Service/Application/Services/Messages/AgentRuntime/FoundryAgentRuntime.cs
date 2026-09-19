@@ -2,6 +2,7 @@ using System.Diagnostics;
 using System.Text.Json;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Models.Messages;
 using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.Connectors;
 using AssistantCore.Service.Application.Models.Messages.Tools;
@@ -20,6 +21,12 @@ public sealed class FoundryAgentRuntime(
     ILogger<FoundryAgentRuntime> logger) : IAgentRuntime
 {
     private const string PreparingResponseProgress = "Préparation de la réponse…";
+    private static readonly string[] ToolProgressMessages =
+    [
+        "Je consulte les sources et contenus pertinents…",
+        "J’analyse les informations disponibles…",
+        "Je recoupe les données autorisées…"
+    ];
     private readonly AgentRuntimeOptions _options = options.Value;
 
     public async Task<AgentTurnResult> RunAsync(
@@ -30,7 +37,7 @@ public sealed class FoundryAgentRuntime(
 
         var stopwatch = Stopwatch.StartNew();
         using var timeoutSource = CreateTurnTimeoutSource(cancellationToken);
-        var context = await CreateExecutionContextAsync(request, timeoutSource.Token);
+        var context = await CreateExecutionContextAsync(request, onToolProgress: null, timeoutSource.Token);
 
         var response = await foundryAgentClient.RunAsync(
             context.ClientRequest,
@@ -52,14 +59,20 @@ public sealed class FoundryAgentRuntime(
         var stopwatch = Stopwatch.StartNew();
         using var timeoutSource = CreateTurnTimeoutSource(cancellationToken);
         await callbacks.OnProgress(PreparingResponseProgress, timeoutSource.Token);
-        var context = await CreateExecutionContextAsync(request, timeoutSource.Token);
+        var context = await CreateExecutionContextAsync(
+            request,
+            callbacks.OnProgress,
+            timeoutSource.Token);
 
+        // Tool/runtime activity from Foundry can expose implementation names such as
+        // EnterpriseSearch, QueryOutlookMailbox or AnalyzeSpreadsheet. The product UI
+        // receives our own generic progress messages instead.
         var response = await foundryAgentClient.RunStreamingAsync(
             context.ClientRequest,
             context.ExecuteToolAsync,
             callbacks.OnAnswerDelta,
-            callbacks.OnActivityDelta,
-            callbacks.OnActivityCompleted,
+            static (_, _) => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask,
             timeoutSource.Token);
 
         stopwatch.Stop();
@@ -68,6 +81,7 @@ public sealed class FoundryAgentRuntime(
 
     private async Task<RuntimeExecutionContext> CreateExecutionContextAsync(
         AgentTurnRequest request,
+        Func<string, CancellationToken, ValueTask>? onToolProgress,
         CancellationToken cancellationToken)
     {
         var contextStartedAt = Stopwatch.GetTimestamp();
@@ -103,6 +117,11 @@ public sealed class FoundryAgentRuntime(
             if (!authorizedToolMappings.TryGetValue(toolCall.Name, out var internalTool))
             {
                 throw new InvalidOperationException($"Foundry requested an unauthorized tool '{toolCall.Name}'.");
+            }
+
+            if (onToolProgress is not null)
+            {
+                await onToolProgress(CreateFriendlyToolProgress(toolCall), token);
             }
 
             var toolStopwatch = Stopwatch.StartNew();
@@ -220,6 +239,19 @@ public sealed class FoundryAgentRuntime(
         _ => throw new ArgumentOutOfRangeException(nameof(toolName), toolName, null)
     };
 
+    private static string CreateFriendlyToolProgress(FoundryAgentToolCall toolCall)
+    {
+        var messages = toolCall.Name switch
+        {
+            "EnterpriseSearch" or "QueryOutlookMailbox" or "AnalyzeSpreadsheet" => ToolProgressMessages,
+            _ => [PreparingResponseProgress]
+        };
+
+        var seed = toolCall.Arguments.GetRawText().GetHashCode(StringComparison.Ordinal);
+        var index = (int)((uint)seed % (uint)messages.Length);
+        return messages[index];
+    }
+
     private static bool CanUseMicrosoft365Tools(ConnectorExecutionContext context) =>
         context.OrganizationId != Guid.Empty
         && context.MemberId != Guid.Empty
@@ -240,25 +272,30 @@ public sealed class FoundryAgentRuntime(
         IReadOnlyCollection<ToolExecutionResult> executedToolResults,
         TimeSpan executionTime)
     {
-        var citations = executedToolResults
+        var allEvidence = executedToolResults
             .SelectMany(result => result.Evidence)
             .Where(evidence => !string.IsNullOrWhiteSpace(evidence.EvidenceId))
             .GroupBy(evidence => evidence.EvidenceId, StringComparer.Ordinal)
             .Select(group => group.First())
-            .Take(_options.FinalEvidenceLimit)
             .ToArray();
+        var citations = EvidenceCitationSelector.Select(
+            response.Content,
+            allEvidence,
+            _options.FinalEvidenceLimit);
         var warnings = executedToolResults
             .SelectMany(result => result.Warnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
         logger.LogInformation(
-            "Foundry agent turn completed in {ElapsedMilliseconds} ms with {ModelCallCount} model calls, {ToolCallCount} tool calls, {InputTokens} input tokens and {OutputTokens} output tokens.",
+            "Foundry agent turn completed in {ElapsedMilliseconds} ms with {ModelCallCount} model calls, {ToolCallCount} tool calls, {InputTokens} input tokens and {OutputTokens} output tokens. Selected {CitationCount} exact citations from {EvidenceCount} retrieved evidence items.",
             executionTime.TotalMilliseconds,
             response.ModelCallCount,
             executedToolResults.Count,
             response.InputTokens,
-            response.OutputTokens);
+            response.OutputTokens,
+            citations.Count,
+            allEvidence.Length);
 
         return new AgentTurnResult(
             response.Content,

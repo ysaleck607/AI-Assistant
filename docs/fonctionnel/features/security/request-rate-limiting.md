@@ -111,8 +111,7 @@ que les règles bloquantes puissent accepter une nouvelle requête. Pour une
 limite d'orchestrations simultanées, il correspond au prochain bail qui doit
 expirer si aucune orchestration ne se termine plus tôt.
 
-`request_rate_limit_exceeded` reste distinct de
-`organization_token_quota_exhausted` et de `ai_provider_rate_limited`. Le
+`request_rate_limit_exceeded` reste distinct de `ai_provider_rate_limited`. Le
 frontend choisit donc son comportement avec `code`, jamais uniquement avec le
 statut HTTP `429`.
 
@@ -205,14 +204,12 @@ Cette évolution devra au minimum ajouter :
 <a id="rate-limit-frontend"></a>
 ## Frontend
 
-Angular distingue les trois causes de `429` :
+Angular distingue les deux causes principales de `429` :
 
 - `request_rate_limit_exceeded` : la question refusée reste dans le compositeur,
   l'action d'envoi est bloquée pendant `retryAfterSeconds` et un compte à rebours
   est affiché. Aucun renvoi automatique n'est effectué; l'utilisateur choisit
   de réessayer;
-- `organization_token_quota_exhausted` : l'envoi reste bloqué jusqu'au
-  renouvellement du quota indiqué par `periodEndsAt`;
 - `ai_provider_rate_limited` : l'utilisateur reçoit un message temporaire lui
   demandant de réessayer plus tard.
 
@@ -236,7 +233,6 @@ l'action d'envoi est empêchée lorsque cela est nécessaire.
   `request_rate_limit_exceeded`, `Retry-After` et `retryAfterSeconds`.
 - Aucun lifecycle de message ni appel à l'agent ne démarre lorsqu'aucune place
   n'est disponible.
-- Angular distingue le rate limit applicatif, le quota d'organisation et le
-  rate limit du fournisseur, conserve une question refusée et ne la renvoie pas
-  automatiquement.
+- Angular distingue le rate limit applicatif du rate limit fournisseur, conserve
+  une question refusée et ne la renvoie pas automatiquement.
 - Le code dépend d'abstractions permettant une implémentation Redis ultérieure.

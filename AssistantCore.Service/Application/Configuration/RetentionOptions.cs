@@ -11,12 +11,6 @@ public sealed class RetentionOptions
     public int ConversationRecoveryDays { get; init; }
 
     /// <summary>
-    /// Duree, en jours, pendant laquelle un enregistrement de consommation de tokens
-    /// est conserve avant de devenir eligible a la purge.
-    /// </summary>
-    public int UsageRetentionDays { get; init; }
-
-    /// <summary>
     /// Duree, en jours, pendant laquelle un contenu Microsoft 365 indexe est conserve
     /// apres avoir cesse d'etre disponible a la source avant de devenir eligible a la purge.
     /// </summary>
@@ -43,7 +37,6 @@ public sealed class RetentionOptions
 
     public bool IsValid() =>
         ConversationRecoveryDays > 0
-        && UsageRetentionDays > 0
         && SearchRetentionDays > 0
         && IngestionRetentionDays > 0
         && LogsRetentionDays > 0

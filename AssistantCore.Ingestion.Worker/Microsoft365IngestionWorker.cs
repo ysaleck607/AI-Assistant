@@ -46,6 +46,22 @@ public sealed class Microsoft365IngestionWorker(
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();
+                var retentionService = scope.ServiceProvider
+                    .GetRequiredService<IMicrosoft365IngestionRetentionService>();
+                await retentionService.RunAsync(stoppingToken);
+            }
+            catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
+            {
+                break;
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Microsoft 365 ingestion retention cycle failed.");
+            }
+
+            try
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
                 var reindexProgressService = scope.ServiceProvider
                     .GetRequiredService<IMicrosoft365ReindexProgressService>();
                 await reindexProgressService.RunAsync(stoppingToken);
@@ -160,6 +176,29 @@ public sealed class Microsoft365IngestionWorker(
         catch (Exception exception)
         {
             logger.LogError(exception, "Microsoft 365 document ingestion cycle failed.");
+        }
+
+        try
+        {
+            for (var index = 0; index < options.Value.MaximumListItemsPerCycle; index++)
+            {
+                await using var scope = scopeFactory.CreateAsyncScope();
+                var service = scope.ServiceProvider
+                    .GetService<IMicrosoft365ListItemProcessingService>();
+                if (service is null
+                    || !await service.ProcessNextAsync(cancellationToken))
+                {
+                    break;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Microsoft 365 list item ingestion cycle failed.");
         }
     }
 }

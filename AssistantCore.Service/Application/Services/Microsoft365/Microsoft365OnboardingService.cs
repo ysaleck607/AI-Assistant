@@ -10,6 +10,7 @@ public sealed class Microsoft365OnboardingService(
     IAuthenticateUserService authenticateUserService,
     IMicrosoft365ConnectionRepository connectionRepository,
     IMicrosoft365SourceDiscoveryRepository sourceRepository,
+    TimeProvider timeProvider,
     IAiToolRegistry? toolRegistry = null)
     : IMicrosoft365OnboardingService
 {
@@ -29,13 +30,26 @@ public sealed class Microsoft365OnboardingService(
                 connection?.Status.ToString() ?? "NotStarted",
                 IsConsentComplete: false,
                 HasSelectedSite: false,
-                HasIndexedSource: false);
+                HasIndexedSource: false,
+                HasCompletedInitialSetup: false);
         }
 
         var selectedSiteIds = await sourceRepository.GetSiteIdsAsync(
             organization.Id,
             cancellationToken);
-        var hasIndexedSource = selectedSiteIds.Count > 0
+        var hasSelectedSite = selectedSiteIds.Count > 0;
+        var hasCompletedInitialSetup = connection.OnboardingCompletedAt is not null;
+
+        if (!hasCompletedInitialSetup && hasSelectedSite)
+        {
+            await connectionRepository.CompleteOnboardingAsync(
+                organization.Id,
+                timeProvider.GetUtcNow(),
+                cancellationToken);
+            hasCompletedInitialSetup = true;
+        }
+
+        var hasIndexedSource = hasSelectedSite
             && await sourceRepository.HasIndexedSourceAsync(
                 organization.Id,
                 cancellationToken);
@@ -53,8 +67,9 @@ public sealed class Microsoft365OnboardingService(
             member.Role == OrganizationRole.Admin,
             connection.Status.ToString(),
             IsConsentComplete: true,
-            HasSelectedSite: selectedSiteIds.Count > 0,
+            HasSelectedSite: hasSelectedSite,
             HasIndexedSource: hasIndexedSource,
+            HasCompletedInitialSetup: hasCompletedInitialSetup,
             IsEnvironmentReady: isEnvironmentReadyWithTools);
     }
 }

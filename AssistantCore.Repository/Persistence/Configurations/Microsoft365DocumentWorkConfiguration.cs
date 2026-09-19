@@ -1,4 +1,5 @@
 using AssistantCore.Repository.Domain.Entities;
+using AssistantCore.Repository.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -45,6 +46,17 @@ public sealed class Microsoft365DocumentWorkConfiguration(
 
         builder.HasIndex(work => work.DeduplicationKey).IsUnique();
         builder.HasIndex(work => new { work.Microsoft365SourceId, work.CreatedAt });
-        builder.HasIndex(work => new { work.Status, work.NextAttemptAt, work.CreatedAt });
+
+        builder.HasIndex(work => work.CreatedAt)
+            .HasDatabaseName("IX_Microsoft365DocumentWork_Pending_CreatedAt")
+            .HasFilter($"[Status] = '{Microsoft365DocumentWorkStatus.Pending}'");
+        builder.HasIndex(work => new { work.NextAttemptAt, work.CreatedAt })
+            .HasDatabaseName("IX_Microsoft365DocumentWork_RetryDue")
+            .HasFilter($"[Status] = '{Microsoft365DocumentWorkStatus.TemporaryFailure}'");
+        builder.HasIndex(work => new { work.LeaseExpiresAt, work.CreatedAt })
+            .HasDatabaseName("IX_Microsoft365DocumentWork_ExpiredLease")
+            .HasFilter($"[Status] = '{Microsoft365DocumentWorkStatus.Processing}'");
+        builder.HasIndex(work => new { work.Status, work.CompletedAt })
+            .HasDatabaseName("IX_Microsoft365DocumentWork_TerminalRetention");
     }
 }

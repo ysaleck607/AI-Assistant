@@ -20,6 +20,7 @@ public class AssistantCoreDbContext(
     [
         typeof(MessageConfiguration),
         typeof(ConversationConfiguration),
+        typeof(MessageSourceConfiguration),
         typeof(MessageWarningConfiguration),
         typeof(Microsoft365ListItemWorkConfiguration),
         typeof(Microsoft365SourceConfiguration),
@@ -74,8 +75,6 @@ public class AssistantCoreDbContext(
 
     public DbSet<MessageWarning> MessageWarnings => Set<MessageWarning>();
 
-    public DbSet<TokenConsumption> TokenConsumptions => Set<TokenConsumption>();
-
     public DbSet<AdministrativeAuditEntry> AdministrativeAuditEntries => Set<AdministrativeAuditEntry>();
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -93,6 +92,10 @@ public class AssistantCoreDbContext(
             EncryptorFactory.CreateFor("AssistantCore.Conversations.MessageContent.v1")));
         modelBuilder.ApplyConfiguration(new ConversationConfiguration(
             EncryptorFactory.CreateFor("AssistantCore.Conversations.Title.v1")));
+        modelBuilder.ApplyConfiguration(new MessageSourceConfiguration(
+            EncryptorFactory.CreateFor("AssistantCore.Conversations.MessageSource.Title.v1"),
+            EncryptorFactory.CreateFor("AssistantCore.Conversations.MessageSource.Reference.v1"),
+            EncryptorFactory.CreateFor("AssistantCore.Conversations.MessageSource.Url.v1")));
         modelBuilder.ApplyConfiguration(new MessageWarningConfiguration(
             EncryptorFactory.CreateFor("AssistantCore.Conversations.MessageWarningContent.v1")));
 

@@ -7,7 +7,7 @@ public interface IMicrosoft365ContentAclSynchronizationService
 {
     /// <summary>
     /// Registers passages that were already uploaded as unavailable. This operation only persists
-    /// their synchronization state; publishing remains a separate operation.
+    /// their synchronization state; publishing remains a separate ACL synchronization step.
     /// </summary>
     Task RegisterAsync(
         Guid organizationId,

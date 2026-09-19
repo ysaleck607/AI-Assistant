@@ -37,7 +37,7 @@ public sealed class MessagePersistenceConfigurationTests
     }
 
     [Fact]
-    public void Given_MessageSourceModel_When_InspectingConfiguration_Then_ConstraintsLookupIndexAndCascadeAreConfigured()
+    public void Given_MessageSourceModel_When_InspectingConfiguration_Then_SensitiveMetadataIsEncryptedAndLookupIndexIsConfigured()
     {
         // Given
         using var dbContext = CreateDbContext();
@@ -48,9 +48,12 @@ public sealed class MessagePersistenceConfigurationTests
         // Then
         Assert.NotNull(entityType);
         Assert.Equal(50, entityType.FindProperty(nameof(MessageSource.SourceType))?.GetMaxLength());
-        Assert.Equal(500, entityType.FindProperty(nameof(MessageSource.Title))?.GetMaxLength());
-        Assert.Equal(500, entityType.FindProperty(nameof(MessageSource.Reference))?.GetMaxLength());
-        Assert.Equal(2048, entityType.FindProperty(nameof(MessageSource.Url))?.GetMaxLength());
+        Assert.IsType<EncryptedStringConverter>(
+            entityType.FindProperty(nameof(MessageSource.Title))?.GetValueConverter());
+        Assert.IsType<EncryptedStringConverter>(
+            entityType.FindProperty(nameof(MessageSource.Reference))?.GetValueConverter());
+        Assert.IsType<NullableEncryptedStringConverter>(
+            entityType.FindProperty(nameof(MessageSource.Url))?.GetValueConverter());
         AssertIndex(entityType, nameof(MessageSource.MessageId));
         AssertForeignKey(
             entityType,

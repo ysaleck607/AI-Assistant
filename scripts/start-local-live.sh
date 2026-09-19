@@ -4,16 +4,34 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SERVICE_PROJECT="$ROOT_DIR/AssistantCore.Service"
+BFF_PROJECT="$ROOT_DIR/AssistantCore.Bff"
 WORKER_PROJECT="$ROOT_DIR/AssistantCore.Ingestion.Worker"
+LOCAL_LIVE_SETTINGS="$SERVICE_PROJECT/appsettings.LocalLive.json"
 API_URL="https://localhost:7292"
-API_HEALTH_URL="http://localhost:5043/"
+API_HEALTH_URL="http://localhost:5043/health/live"
+BFF_URL="http://localhost:7293"
+BFF_HEALTH_URL="http://localhost:7293/health/live"
 LOCAL_LIVE_ENVIRONMENT="LocalLive"
 API_PID=""
+BFF_PID=""
 WORKER_PID=""
+
+read_is_secured() {
+    local value
+    value="$(sed -nE 's/^[[:space:]]*"IS_SECURED"[[:space:]]*:[[:space:]]*(true|false)[[:space:]]*,?[[:space:]]*$/\1/p' "$LOCAL_LIVE_SETTINGS" | head -n 1)"
+    if [[ "$value" != "true" && "$value" != "false" ]]; then
+        echo "IS_SECURED doit être défini à true ou false dans $LOCAL_LIVE_SETTINGS." >&2
+        exit 1
+    fi
+    printf '%s' "$value"
+}
 
 cleanup() {
     if [[ -n "$WORKER_PID" ]] && kill -0 "$WORKER_PID" 2>/dev/null; then
         kill "$WORKER_PID"
+    fi
+    if [[ -n "$BFF_PID" ]] && kill -0 "$BFF_PID" 2>/dev/null; then
+        kill "$BFF_PID"
     fi
     if [[ -n "$API_PID" ]] && kill -0 "$API_PID" 2>/dev/null; then
         kill "$API_PID"
@@ -34,6 +52,13 @@ if [[ ! -f "$ROOT_DIR/.env.database" ]]; then
     exit 1
 fi
 
+if [[ ! -f "$LOCAL_LIVE_SETTINGS" ]]; then
+    echo "Configuration LocalLive introuvable: $LOCAL_LIVE_SETTINGS" >&2
+    exit 1
+fi
+
+IS_SECURED="$(read_is_secured)"
+
 set -a
 source "$ROOT_DIR/.env.database"
 set +a
@@ -47,15 +72,19 @@ DATABASE_CONNECTION_STRING="Server=localhost,1433;Database=AssistantCoreDb;User 
 
 cd "$ROOT_DIR"
 
-echo "[1/5] Démarrage de SQL Server et application des migrations..."
+echo "[1/6] Démarrage de SQL Server et application des migrations..."
 bash scripts/start-database-stack.sh
 
-echo "[2/5] Chargement de la configuration LocalLive versionnée..."
+echo "[2/6] Chargement de la configuration LocalLive versionnée..."
+echo "      IS_SECURED=$IS_SECURED"
 
-echo "[3/5] Compilation de la solution..."
+echo "[3/6] Compilation..."
 dotnet build Solution.sln
+if [[ "$IS_SECURED" == "true" ]]; then
+    dotnet build "$BFF_PROJECT/AssistantCore.Bff.csproj"
+fi
 
-echo "[4/5] Démarrage de l'API sur $API_URL..."
+echo "[4/6] Démarrage de l'API sur $API_URL..."
 if curl --silent --output /dev/null --max-time 1 "$API_HEALTH_URL"; then
     echo "Un service utilise déjà le port local 5043. Arrête-le avant de relancer ce script." >&2
     exit 1
@@ -85,7 +114,46 @@ if [[ "$API_READY" != true ]]; then
     exit 1
 fi
 
-echo "[5/5] Démarrage du Worker local..."
+if [[ "$IS_SECURED" == "true" ]]; then
+    echo "[5/6] Démarrage du BFF sécurisé sur $BFF_URL..."
+
+    BFF_CLIENT_SECRET="$(dotnet user-secrets list --project "$BFF_PROJECT/AssistantCore.Bff.csproj" 2>/dev/null \
+        | sed -n 's/^AzureAd:ClientSecret = //p' \
+        | head -n 1)"
+    if [[ -z "$BFF_CLIENT_SECRET" ]]; then
+        echo "Le mode sécurisé requiert le secret BFF Entra." >&2
+        echo "Configure-le avec:" >&2
+        echo "  dotnet user-secrets set 'AzureAd:ClientSecret' '<secret>' --project AssistantCore.Bff/AssistantCore.Bff.csproj" >&2
+        exit 1
+    fi
+
+    ASPNETCORE_ENVIRONMENT="$LOCAL_LIVE_ENVIRONMENT" \
+        ASPNETCORE_URLS="$BFF_URL" \
+        AZURE_TOKEN_CREDENTIALS=AzureCliCredential \
+        dotnet run --no-build --no-launch-profile --project "$BFF_PROJECT" &
+    BFF_PID=$!
+
+    BFF_READY=false
+    for _ in {1..60}; do
+        if ! kill -0 "$BFF_PID" 2>/dev/null; then
+            wait "$BFF_PID"
+        fi
+        if curl --silent --fail "$BFF_HEALTH_URL" >/dev/null; then
+            BFF_READY=true
+            break
+        fi
+        sleep 1
+    done
+
+    if [[ "$BFF_READY" != true ]]; then
+        echo "Le BFF n'a pas répondu après 60 secondes." >&2
+        exit 1
+    fi
+else
+    echo "[5/6] BFF désactivé (IS_SECURED=false)."
+fi
+
+echo "[6/6] Démarrage du Worker local..."
 DOTNET_ENVIRONMENT="$LOCAL_LIVE_ENVIRONMENT" \
     DOTNET_CONTENTROOT="$WORKER_PROJECT" \
     ConnectionStrings__AssistantCoreDatabase="$DATABASE_CONNECTION_STRING" \
@@ -95,19 +163,35 @@ WORKER_PID=$!
 echo
 echo "Environnement connecté aux vrais services prêt. Laisse ce terminal ouvert."
 echo "API:     $API_URL"
+echo "Health:  $API_HEALTH_URL"
 echo "Webhook: consulte Microsoft365:WebhookBaseUrl dans appsettings.LocalLive.json"
 echo "Démarre ngrok séparément si nécessaire avec le domaine LocalLive configuré."
 echo "SQLPad:  http://localhost:3000"
-echo
-echo "Dans Postman: AuthenticateUser -> Start Consent -> Register Site -> Get Drives -> Enable Drive -> Send Message"
-echo "Utilise Ctrl+C pour arrêter l'API et le Worker."
 
-while kill -0 "$API_PID" 2>/dev/null && kill -0 "$WORKER_PID" 2>/dev/null; do
+if [[ "$IS_SECURED" == "true" ]]; then
+    echo "BFF:     $BFF_URL"
+    echo
+    echo "Mode sécurisé actif: démarre la SPA avec 'npm run start:secured'."
+    echo "Ouvre ensuite https://localhost:4200."
+    echo "Le redirect URI Entra du BFF doit inclure https://localhost:4200/signin-oidc."
+else
+    echo
+    echo "Mode LocalLive classique: démarre la SPA avec 'npm run start:certification'."
+    echo "Dans Postman: AuthenticateUser -> Start Consent -> Register Site -> Get Drives -> Enable Drive -> Send Message"
+fi
+
+echo "Utilise Ctrl+C pour arrêter l'API, le BFF éventuel et le Worker."
+
+while kill -0 "$API_PID" 2>/dev/null \
+    && kill -0 "$WORKER_PID" 2>/dev/null \
+    && { [[ -z "$BFF_PID" ]] || kill -0 "$BFF_PID" 2>/dev/null; }; do
     sleep 1
 done
 
 if ! kill -0 "$API_PID" 2>/dev/null; then
     wait "$API_PID"
+elif [[ -n "$BFF_PID" ]] && ! kill -0 "$BFF_PID" 2>/dev/null; then
+    wait "$BFF_PID"
 else
     wait "$WORKER_PID"
 fi

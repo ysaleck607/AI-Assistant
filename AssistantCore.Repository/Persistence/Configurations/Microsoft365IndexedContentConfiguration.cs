@@ -40,6 +40,10 @@ public sealed class Microsoft365IndexedContentConfiguration(
             content.Microsoft365SourceId,
             content.ExternalContentId
         }).IsUnique();
-        builder.HasIndex(content => content.NextAclReconciliationAt);
+        builder.HasIndex(content => new
+        {
+            content.NextAclReconciliationAt,
+            content.UpdatedAt
+        }).HasDatabaseName("IX_Microsoft365IndexedContent_AclReconciliationDue");
     }
 }

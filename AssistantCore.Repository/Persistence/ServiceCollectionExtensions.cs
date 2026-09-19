@@ -37,12 +37,17 @@ public static class ServiceCollectionExtensions
             IMicrosoft365DocumentWorkProcessingRepository,
             Microsoft365DocumentWorkProcessingRepository>();
         services.AddScoped<
+            IMicrosoft365ListItemWorkProcessingRepository,
+            Microsoft365ListItemWorkProcessingRepository>();
+        services.AddScoped<
+            IMicrosoft365IngestionRetentionRepository,
+            Microsoft365IngestionRetentionRepository>();
+        services.AddScoped<
             IMicrosoft365PendingSynchronizationRepository,
             Microsoft365PendingSynchronizationRepository>();
         services.AddScoped<
             IMicrosoft365ReindexOperationRepository,
             Microsoft365ReindexOperationRepository>();
-        services.AddScoped<ITokenConsumptionRepository, TokenConsumptionRepository>();
         services.AddScoped<IAdministrativeAuditRepository, AdministrativeAuditRepository>();
 
         return services;

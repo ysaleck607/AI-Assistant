@@ -22,6 +22,8 @@ public sealed class Microsoft365Connection
 
     public DateTimeOffset? ConsentValidatedAt { get; set; }
 
+    public DateTimeOffset? OnboardingCompletedAt { get; set; }
+
     public string? LastErrorCode { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -60,6 +62,17 @@ public sealed class Microsoft365Connection
         UpdatedAt = occurredAt;
     }
 
+    public void CompleteOnboarding(DateTimeOffset occurredAt)
+    {
+        if (Status != Microsoft365ConnectionStatus.Active)
+        {
+            throw new InvalidOperationException("Only an active Microsoft 365 connection can complete onboarding.");
+        }
+
+        OnboardingCompletedAt ??= occurredAt;
+        UpdatedAt = occurredAt;
+    }
+
     public void MarkError(string errorCode, DateTimeOffset occurredAt)
     {
         if (Status == Microsoft365ConnectionStatus.Revoked)
@@ -77,6 +90,7 @@ public sealed class Microsoft365Connection
         Status = Microsoft365ConnectionStatus.Revoked;
         ConsentStateHash = null;
         ConsentStateExpiresAt = null;
+        OnboardingCompletedAt = null;
         LastErrorCode = null;
         UpdatedAt = occurredAt;
     }

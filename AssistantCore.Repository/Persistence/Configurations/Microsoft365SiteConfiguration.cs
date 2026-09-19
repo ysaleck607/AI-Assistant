@@ -30,5 +30,11 @@ public sealed class Microsoft365SiteConfiguration : IEntityTypeConfiguration<Mic
             site.OrganizationConnectorId,
             site.SiteId
         }).IsUnique();
+
+        builder.HasIndex(site => new
+        {
+            site.OrganizationId,
+            site.SiteId
+        }).HasDatabaseName("IX_Microsoft365Site_OrganizationId_SiteId");
     }
 }

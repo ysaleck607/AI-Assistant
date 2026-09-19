@@ -15,16 +15,14 @@ public sealed class RetentionOptionsTests
     }
 
     [Theory]
-    [InlineData(0, 30, 30, 30, 30, 30)]
-    [InlineData(30, 0, 30, 30, 30, 30)]
-    [InlineData(30, 30, 0, 30, 30, 30)]
-    [InlineData(30, 30, 30, 0, 30, 30)]
-    [InlineData(30, 30, 30, 30, 0, 30)]
-    [InlineData(30, 30, 30, 30, 30, 0)]
-    [InlineData(-1, 30, 30, 30, 30, 30)]
+    [InlineData(0, 30, 30, 30, 30)]
+    [InlineData(30, 0, 30, 30, 30)]
+    [InlineData(30, 30, 0, 30, 30)]
+    [InlineData(30, 30, 30, 0, 30)]
+    [InlineData(30, 30, 30, 30, 0)]
+    [InlineData(-1, 30, 30, 30, 30)]
     public void Given_ANonPositiveDurationForAnyCategory_When_IsValid_Then_ReturnsFalse(
         int conversationRecoveryDays,
-        int usageRetentionDays,
         int searchRetentionDays,
         int ingestionRetentionDays,
         int logsRetentionDays,
@@ -34,7 +32,6 @@ public sealed class RetentionOptionsTests
         var options = new RetentionOptions
         {
             ConversationRecoveryDays = conversationRecoveryDays,
-            UsageRetentionDays = usageRetentionDays,
             SearchRetentionDays = searchRetentionDays,
             IngestionRetentionDays = ingestionRetentionDays,
             LogsRetentionDays = logsRetentionDays,
@@ -48,7 +45,6 @@ public sealed class RetentionOptionsTests
     private static RetentionOptions CreateValidOptions() => new()
     {
         ConversationRecoveryDays = 30,
-        UsageRetentionDays = 30,
         SearchRetentionDays = 30,
         IngestionRetentionDays = 30,
         LogsRetentionDays = 30,

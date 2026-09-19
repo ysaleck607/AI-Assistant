@@ -1,4 +1,5 @@
 using AssistantCore.Repository.Domain.Entities;
+using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Persistence;
 using Microsoft.EntityFrameworkCore;
 
@@ -102,6 +103,7 @@ public sealed class Microsoft365ListSynchronizationRepository(AssistantCoreDbCon
                 WebUrl = work.WebUrl,
                 FieldsJson = work.FieldsJson,
                 DeduplicationKey = work.DeduplicationKey,
+                Status = Microsoft365ListItemWorkStatus.Pending,
                 CreatedAt = work.CreatedAt
             })
             .ToArray();
@@ -111,5 +113,4 @@ public sealed class Microsoft365ListSynchronizationRepository(AssistantCoreDbCon
         await transaction.CommitAsync(cancellationToken);
         return newWorks.Length;
     }
-
 }

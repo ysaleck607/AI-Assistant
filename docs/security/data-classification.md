@@ -150,7 +150,7 @@ déjà calculées.
 | Message | `Id`, `ConversationId`, `Role`, `ProcessingStatus`, `Model`, `ProcessingErrorCode`, `CreatedAt`, `UpdatedAt` |
 | MessageSource | `Id`, `MessageId`, `SourceType`, `SourceDate` |
 | MessageWarning | `Id`, `MessageId` |
-| Microsoft365Connection | `Id`, `OrganizationId`, `OrganizationConnectorId`, `TenantId`, `ConsentStateExpiresAt`, `ConsentStateConsumedAt`, `ConsentValidatedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt`, `RowVersion` |
+| Microsoft365Connection | `Id`, `OrganizationId`, `OrganizationConnectorId`, `TenantId`, `ConsentStateExpiresAt`, `ConsentStateConsumedAt`, `ConsentValidatedAt`, `OnboardingCompletedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt`, `RowVersion` |
 | Microsoft365DocumentWork | `Id`, `OrganizationId`, `Microsoft365SourceId`, `Microsoft365SynchronizationId`, `SiteId`, `DriveId`, `DriveItemId`, `ETag`, `CreatedDateTime`, `LastModifiedDateTime`, `Size`, `MimeType`, `DeduplicationKey`, `WorkType`, `AttemptCount`, `LeaseId`, `LeaseExpiresAt`, `NextAttemptAt`, `CompletedAt`, `LastErrorCode`, `CreatedAt` |
 | Microsoft365Drive | `OrganizationId`, `OrganizationConnectorId`, `SiteId`, `DriveId`, `OwnerUserObjectId` |
 | Microsoft365IndexedContent | `Id`, `OrganizationId`, `Microsoft365SourceId`, `ExternalContentId`, `DocumentVersion`, `LastModifiedAt`, `AclFingerprint`, `IsAvailable`, `NextAclReconciliationAt`, `CreatedAt`, `UpdatedAt` |

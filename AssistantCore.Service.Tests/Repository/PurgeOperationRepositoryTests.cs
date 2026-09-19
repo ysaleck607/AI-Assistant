@@ -18,9 +18,6 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given: EF Core's InMemory provider does not reliably enforce composite unique
-        // indexes, so the identity conflict RequestAsync must survive is simulated the same
-        // way OrganizationMemberQueries' equivalent conflict is - see OrganizationMemberQueriesTests.
         var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
             .UseInMemoryDatabase(databaseId.ToString())
             .Options;
@@ -35,11 +32,9 @@ public sealed class PurgeOperationRepositoryTests
         await using var throwingContext = new ThrowOnceDbContext(options, identityConflict);
         var repository = new PurgeOperationRepository(throwingContext);
 
-        // When
         var result = await repository.RequestAsync(
             organizationId, PurgeOperationScope.Audit, targetId, Now, Now.AddDays(30), "Requested");
 
-        // Then
         Assert.Equal(winningOperation.Id, result.Id);
     }
 
@@ -49,19 +44,17 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given: a coincidental Guid collision across unrelated tables (Usage vs. Search)
-        // must never be treated as the same purge target.
+        // A coincidental Guid collision across unrelated retention scopes must never be
+        // treated as the same purge target.
         await using var dbContext = CreateDbContext(databaseId);
         var repository = new PurgeOperationRepository(dbContext);
 
-        // When
-        var usageOperation = await repository.RequestAsync(
-            organizationId, PurgeOperationScope.Usage, targetId, Now, Now.AddDays(30), "Requested");
         var searchOperation = await repository.RequestAsync(
             organizationId, PurgeOperationScope.Search, targetId, Now, Now.AddDays(30), "Requested");
+        var ingestionOperation = await repository.RequestAsync(
+            organizationId, PurgeOperationScope.Ingestion, targetId, Now, Now.AddDays(30), "Requested");
 
-        // Then
-        Assert.NotEqual(usageOperation.Id, searchOperation.Id);
+        Assert.NotEqual(searchOperation.Id, ingestionOperation.Id);
     }
 
     [Theory, AutoDomainData]
@@ -70,17 +63,14 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         var operation = await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Logs, targetId, purgeAfter: Now.AddMinutes(-1));
         var repository = new PurgeOperationRepository(dbContext);
         var leaseId = Guid.NewGuid();
 
-        // When
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // Then
         Assert.NotNull(claimed);
         Assert.Equal(operation.Id, claimed.Id);
         Assert.Equal(PurgeOperationStatus.Processing, claimed.Status);
@@ -95,16 +85,13 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given: the configured retention duration protects the record until it elapses.
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Audit, targetId, purgeAfter: Now.AddDays(5));
         var repository = new PurgeOperationRepository(dbContext);
 
-        // When
         var claimed = await repository.ClaimNextAsync(Guid.NewGuid(), Now, Now.AddMinutes(10));
 
-        // Then
         Assert.Null(claimed);
     }
 
@@ -114,17 +101,14 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Ingestion, targetId, purgeAfter: Now.AddMinutes(-1));
         var repository = new PurgeOperationRepository(dbContext);
         await repository.ClaimNextAsync(Guid.NewGuid(), Now, Now.AddMinutes(10));
 
-        // When
         var second = await repository.ClaimNextAsync(Guid.NewGuid(), Now, Now.AddMinutes(10));
 
-        // Then
         Assert.Null(second);
     }
 
@@ -134,20 +118,17 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given: a worker that died mid-purge must never permanently block the operation.
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Search, targetId, purgeAfter: Now.AddMinutes(-1));
         var repository = new PurgeOperationRepository(dbContext);
         await repository.ClaimNextAsync(Guid.NewGuid(), Now, Now.AddMinutes(10));
 
-        // When
         var reclaimed = await repository.ClaimNextAsync(
             Guid.NewGuid(),
             Now.AddMinutes(20),
             Now.AddMinutes(30));
 
-        // Then
         Assert.NotNull(reclaimed);
         Assert.Equal(2, reclaimed.AttemptCount);
     }
@@ -158,18 +139,15 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
-            dbContext, organizationId, PurgeOperationScope.Usage, targetId, purgeAfter: Now.AddMinutes(-1));
+            dbContext, organizationId, PurgeOperationScope.Search, targetId, purgeAfter: Now.AddMinutes(-1));
         var repository = new PurgeOperationRepository(dbContext);
         var leaseId = Guid.NewGuid();
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // When
         await repository.AdvanceAsync(claimed!.Id, leaseId, "DeleteContent");
 
-        // Then
         var reloaded = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == claimed.Id);
@@ -182,18 +160,14 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given: a worker whose lease already expired, superseded by another worker,
-        // must never be able to write over the new lease holder's progress.
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
-            dbContext, organizationId, PurgeOperationScope.Usage, targetId, purgeAfter: Now.AddMinutes(-1));
+            dbContext, organizationId, PurgeOperationScope.Search, targetId, purgeAfter: Now.AddMinutes(-1));
         var repository = new PurgeOperationRepository(dbContext);
         var claimed = await repository.ClaimNextAsync(Guid.NewGuid(), Now, Now.AddMinutes(10));
 
-        // When
         await repository.AdvanceAsync(claimed!.Id, Guid.NewGuid(), "ShouldNotApply");
 
-        // Then
         var reloaded = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == claimed.Id);
@@ -206,7 +180,6 @@ public sealed class PurgeOperationRepositoryTests
         Guid organizationId,
         Guid targetId)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Audit, targetId, purgeAfter: Now.AddMinutes(-1));
@@ -214,10 +187,8 @@ public sealed class PurgeOperationRepositoryTests
         var leaseId = Guid.NewGuid();
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // When
         await repository.CompleteAsync(claimed!.Id, leaseId, Now.AddMinutes(5));
 
-        // Then
         var reloaded = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == claimed.Id);
@@ -234,7 +205,6 @@ public sealed class PurgeOperationRepositoryTests
         Guid targetId,
         string errorCode)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Logs, targetId, purgeAfter: Now.AddMinutes(-1));
@@ -242,10 +212,8 @@ public sealed class PurgeOperationRepositoryTests
         var leaseId = Guid.NewGuid();
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // When
         await repository.FailAsync(claimed!.Id, leaseId, errorCode, isPermanent: false, Now.AddMinutes(5));
 
-        // Then
         var reloaded = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == claimed.Id);
@@ -261,7 +229,6 @@ public sealed class PurgeOperationRepositoryTests
         Guid targetId,
         string errorCode)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, organizationId, PurgeOperationScope.Logs, targetId, purgeAfter: Now.AddMinutes(-1));
@@ -269,10 +236,8 @@ public sealed class PurgeOperationRepositoryTests
         var leaseId = Guid.NewGuid();
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // When
         await repository.FailAsync(claimed!.Id, leaseId, errorCode, isPermanent: true, nextAttemptAt: null);
 
-        // Then
         var reloaded = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == claimed.Id);
@@ -288,7 +253,6 @@ public sealed class PurgeOperationRepositoryTests
         Guid firstTargetId,
         Guid secondTargetId)
     {
-        // Given
         await using var dbContext = CreateDbContext(databaseId);
         await SeedAsync(
             dbContext, firstOrganizationId, PurgeOperationScope.Audit, firstTargetId, purgeAfter: Now.AddMinutes(-2));
@@ -298,10 +262,8 @@ public sealed class PurgeOperationRepositoryTests
         var leaseId = Guid.NewGuid();
         var claimed = await repository.ClaimNextAsync(leaseId, Now, Now.AddMinutes(10));
 
-        // When
         await repository.CompleteAsync(claimed!.Id, leaseId, Now);
 
-        // Then
         var untouched = await dbContext.PurgeOperations
             .AsNoTracking()
             .SingleAsync(candidate => candidate.Id == secondOperation.Id);
@@ -334,12 +296,6 @@ public sealed class PurgeOperationRepositoryTests
         return operation;
     }
 
-    /// <summary>
-    /// Le fournisseur en memoire ignore les transactions. Ces tests verifient donc la
-    /// logique de reclamation, de bail et de reprise, mais pas l'isolation Serializable
-    /// elle-meme : seule une vraie base SQL Server peut prouver que deux workers
-    /// concurrents ne reclament jamais la meme operation.
-    /// </summary>
     private static AssistantCoreDbContext CreateDbContext(Guid databaseId)
     {
         var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
@@ -350,11 +306,6 @@ public sealed class PurgeOperationRepositoryTests
         return new AssistantCoreDbContext(options);
     }
 
-    /// <summary>
-    /// Test double that throws a caller-supplied exception on the first
-    /// <see cref="SaveChangesAsync"/> call, simulating a concurrent write that
-    /// hits a real database constraint, then behaves normally afterwards.
-    /// </summary>
     private sealed class ThrowOnceDbContext(
         DbContextOptions<AssistantCoreDbContext> options,
         Exception exceptionToThrowOnce) : AssistantCoreDbContext(options)

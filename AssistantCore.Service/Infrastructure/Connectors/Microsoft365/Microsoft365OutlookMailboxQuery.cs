@@ -52,7 +52,7 @@ public sealed class Microsoft365OutlookMailboxQueryAdapter(
             var evidence = evidenceNormalizer.Normalize(
                 messages.Select(message => new EvidenceCandidate(
                     "Microsoft365",
-                    message.Subject,
+                    $"Courriel : {message.Subject}",
                     CreateEvidenceContent(message),
                     $"outlook:{message.Id}",
                     message.WebLink,

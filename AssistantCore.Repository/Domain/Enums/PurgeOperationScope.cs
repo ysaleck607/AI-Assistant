@@ -6,7 +6,6 @@ namespace AssistantCore.Repository.Domain.Enums;
 /// </summary>
 public enum PurgeOperationScope
 {
-    Usage = 1,
     Search = 2,
     Ingestion = 3,
     Logs = 4,

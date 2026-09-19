@@ -10,13 +10,11 @@ public sealed class Microsoft365PersistenceConfigurationTests
     public void Given_Microsoft365Models_When_InspectingConfiguration_Then_UniqueTenantAndSourceConstraintsAreConfigured(
         Guid databaseId)
     {
-        // Given
         var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
             .UseInMemoryDatabase(databaseId.ToString())
             .Options;
         using var dbContext = new AssistantCoreDbContext(options);
 
-        // When
         var connectionType = dbContext.Model.FindEntityType(typeof(Microsoft365Connection));
         var sourceType = dbContext.Model.FindEntityType(typeof(Microsoft365Source));
         var siteType = dbContext.Model.FindEntityType(typeof(Microsoft365Site));
@@ -29,7 +27,6 @@ public sealed class Microsoft365PersistenceConfigurationTests
         var indexedContentType = dbContext.Model.FindEntityType(typeof(Microsoft365IndexedContent));
         var indexedPassageType = dbContext.Model.FindEntityType(typeof(Microsoft365IndexedPassage));
 
-        // Then
         Assert.NotNull(connectionType);
         Assert.Contains(connectionType.GetIndexes(), index =>
             index.IsUnique && HasProperties(index, nameof(Microsoft365Connection.OrganizationId)));
@@ -55,6 +52,8 @@ public sealed class Microsoft365PersistenceConfigurationTests
                 nameof(Microsoft365Site.OrganizationId),
                 nameof(Microsoft365Site.OrganizationConnectorId),
                 nameof(Microsoft365Site.SiteId)));
+        Assert.Contains(siteType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365Site.OrganizationId), nameof(Microsoft365Site.SiteId)));
 
         Assert.NotNull(driveType);
         Assert.Equal("Microsoft365Drive", driveType.GetTableName());
@@ -78,9 +77,7 @@ public sealed class Microsoft365PersistenceConfigurationTests
         Assert.NotNull(listType.FindProperty(nameof(Microsoft365List.WebUrl)));
         Assert.NotNull(listType.FindProperty(nameof(Microsoft365List.Status)));
         Assert.NotNull(listType.FindProperty(nameof(Microsoft365List.IsIndexed)));
-        Assert.Equal(
-            64,
-            listType.FindProperty(nameof(Microsoft365List.SchemaFingerprint))?.GetMaxLength());
+        Assert.Equal(64, listType.FindProperty(nameof(Microsoft365List.SchemaFingerprint))?.GetMaxLength());
         Assert.NotNull(listType.FindProperty(nameof(Microsoft365List.RequiresItemReprocessing)));
         Assert.Contains(listType.GetIndexes(), index =>
             index.IsUnique && HasProperties(
@@ -98,10 +95,7 @@ public sealed class Microsoft365PersistenceConfigurationTests
         Assert.Contains(subscriptionType.GetIndexes(), index =>
             index.IsUnique
             && HasProperties(index, nameof(Microsoft365Subscription.Microsoft365SourceId))
-            && string.Equals(
-                index.GetFilter(),
-                "[Status] = 'Active'",
-                StringComparison.Ordinal));
+            && string.Equals(index.GetFilter(), "[Status] = 'Active'", StringComparison.Ordinal));
 
         Assert.NotNull(synchronizationType);
         Assert.Contains(synchronizationType.GetIndexes(), index =>
@@ -109,13 +103,27 @@ public sealed class Microsoft365PersistenceConfigurationTests
 
         Assert.NotNull(listItemWorkType);
         Assert.Contains(listItemWorkType.GetIndexes(), index =>
-            index.IsUnique
-            && HasProperties(index, nameof(Microsoft365ListItemWork.DeduplicationKey)));
+            index.IsUnique && HasProperties(index, nameof(Microsoft365ListItemWork.DeduplicationKey)));
+        Assert.Contains(listItemWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365ListItemWork.CreatedAt))
+            && string.Equals(index.GetFilter(), "[Status] = 'Pending'", StringComparison.Ordinal));
+        Assert.Contains(listItemWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365ListItemWork.NextAttemptAt), nameof(Microsoft365ListItemWork.CreatedAt))
+            && string.Equals(index.GetFilter(), "[Status] = 'TemporaryFailure'", StringComparison.Ordinal));
+        Assert.Contains(listItemWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365ListItemWork.LeaseExpiresAt), nameof(Microsoft365ListItemWork.CreatedAt))
+            && string.Equals(index.GetFilter(), "[Status] = 'Processing'", StringComparison.Ordinal));
 
         Assert.NotNull(documentWorkType);
         Assert.Contains(documentWorkType.GetIndexes(), index =>
-            index.IsUnique
-            && HasProperties(index, nameof(Microsoft365DocumentWork.DeduplicationKey)));
+            index.IsUnique && HasProperties(index, nameof(Microsoft365DocumentWork.DeduplicationKey)));
+        Assert.Contains(documentWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365DocumentWork.CreatedAt))
+            && string.Equals(index.GetFilter(), "[Status] = 'Pending'", StringComparison.Ordinal));
+        Assert.Contains(documentWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365DocumentWork.NextAttemptAt), nameof(Microsoft365DocumentWork.CreatedAt)));
+        Assert.Contains(documentWorkType.GetIndexes(), index =>
+            HasProperties(index, nameof(Microsoft365DocumentWork.LeaseExpiresAt), nameof(Microsoft365DocumentWork.CreatedAt)));
 
         Assert.NotNull(indexedContentType);
         Assert.Equal(64, indexedContentType.FindProperty(nameof(Microsoft365IndexedContent.AclFingerprint))?.GetMaxLength());
@@ -143,7 +151,10 @@ public sealed class Microsoft365PersistenceConfigurationTests
         Assert.IsType<NullableEncryptedStringConverter>(
             documentWorkType.FindProperty(nameof(Microsoft365DocumentWork.WebUrl))?.GetValueConverter());
         Assert.Contains(indexedContentType.GetIndexes(), index =>
-            HasProperties(index, nameof(Microsoft365IndexedContent.NextAclReconciliationAt)));
+            HasProperties(
+                index,
+                nameof(Microsoft365IndexedContent.NextAclReconciliationAt),
+                nameof(Microsoft365IndexedContent.UpdatedAt)));
         Assert.Contains(indexedContentType.GetIndexes(), index =>
             index.IsUnique
             && HasProperties(
@@ -154,8 +165,7 @@ public sealed class Microsoft365PersistenceConfigurationTests
 
         Assert.NotNull(indexedPassageType);
         Assert.Contains(indexedPassageType.GetIndexes(), index =>
-            index.IsUnique
-            && HasProperties(index, nameof(Microsoft365IndexedPassage.ChunkId)));
+            index.IsUnique && HasProperties(index, nameof(Microsoft365IndexedPassage.ChunkId)));
     }
 
     private static bool HasProperties(
