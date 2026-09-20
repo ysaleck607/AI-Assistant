@@ -5,7 +5,7 @@ FROM flyway/flyway:13.7.0
 # vulnerable transitive HTTP components) and pin the Microsoft driver version
 # used by Azure SQL. The checksum keeps the downloaded driver reproducible.
 ARG MSSQL_JDBC_VERSION=13.2.1.jre11
-ARG MSSQL_JDBC_SHA256=406aa00b60c1b30e1bb02e469530dd2e21f2eace
+ARG MSSQL_JDBC_SHA256=2d137aa308c78932878952fe3624ea090ecfe644414b8b23e71a305f425698c5
 
 ADD https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/${MSSQL_JDBC_VERSION}/mssql-jdbc-${MSSQL_JDBC_VERSION}.jar /flyway/drivers/mssql-jdbc-${MSSQL_JDBC_VERSION}.jar
 RUN set -eux; \
