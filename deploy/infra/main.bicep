@@ -237,7 +237,7 @@ resource apiDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@2022-
   properties: {
     principalId: apiIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bde6-1746d40b5a80')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
   }
 }
 
@@ -247,7 +247,7 @@ resource workerDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@20
   properties: {
     principalId: workerIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bde6-1746d40b5a80')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
   }
 }
 
@@ -257,7 +257,7 @@ resource bffDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@2022-
   properties: {
     principalId: bffIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bde6-1746d40b5a80')
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
   }
 }
 

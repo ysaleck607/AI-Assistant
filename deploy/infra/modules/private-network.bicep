@@ -11,7 +11,7 @@ var vnetName = 'vnet-assistant-${environmentName}-${nameSuffix}'
 var containerAppsSubnetName = 'snet-containerapps'
 var privateEndpointsSubnetName = 'snet-private-endpoints'
 var sqlPrivateEndpointName = 'pe-sql-assistant-${environmentName}-${nameSuffix}'
-var sqlPrivateDnsZoneName = 'privatelink.${environment().suffixes.sqlServerHostname}'
+var sqlPrivateDnsZoneName = 'privatelink${environment().suffixes.sqlServerHostname}'
 
 resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
   name: vnetName
