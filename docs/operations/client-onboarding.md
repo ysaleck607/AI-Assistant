@@ -88,6 +88,7 @@ Envoyer :
 ```http
 POST /api/organizations
 Content-Type: application/json
+Authorization: Bearer <jeton ManagementAdmin>
 
 {
   "domain": "contoso.com"
@@ -98,10 +99,10 @@ Cette opération est idempotente. Si l'organisation active existe déjà pour ce
 domaine, le backend retourne la même organisation au lieu d'exiger une
 suppression ou une correction manuelle en base.
 
-Tant que le backoffice onPremia n'est pas disponible, cet endpoint est
-temporairement accessible sans authentification. Il ne doit pas être exposé sur
-un réseau public. Une politique d'autorisation réservée au backoffice devra être
-ajoutée avant son exposition.
+Cet endpoint est protégé par la policy `ManagementAdmin` depuis que le
+backoffice onPremia l'expose (page Organisations, action « Créer une
+organisation »). Un jeton d'opérateur Synaptix est désormais requis pour
+l'appeler, y compris manuellement via Postman.
 
 L'organisation peut être créée avant ou après l'affectation des utilisateurs
 et des rôles dans Microsoft Entra. Aucun membre interne n'est requis à cette

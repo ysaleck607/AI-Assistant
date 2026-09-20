@@ -77,6 +77,8 @@ public class AssistantCoreDbContext(
 
     public DbSet<AdministrativeAuditEntry> AdministrativeAuditEntries => Set<AdministrativeAuditEntry>();
 
+    public DbSet<OperationalIncident> OperationalIncidents => Set<OperationalIncident>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, EncryptionAwareModelCacheKeyFactory>();

@@ -124,6 +124,7 @@ l'exploitant du service.
 | OrganizationMember | `Name` | B | Donnée personnelle directement identifiante | Chiffrement applicatif | Aucune | Cycle de vie du membre | Client |
 | OrganizationMember | `Email` | B | Donnée personnelle, sert aux recherches exactes | Chiffrement applicatif + blind index HMAC | Égalité exacte via le blind index | Cycle de vie du membre | Client |
 | Microsoft365Drive | `OwnerUserPrincipalName` | B | Un UPN est une adresse de connexion, donc une PII | Chiffrement applicatif | Aucune | Tant que le OneDrive est enregistré | Client |
+| OperationalIncident | `ResolvedByEmail` | B | Adresse de l'opérateur Synaptix ayant résolu l'incident | Chiffrement applicatif | Aucune | Cycle de vie de l'incident | Synaptix |
 | Microsoft365Subscription | `ProtectedClientState` | C | Valide l'authenticité d'une notification Graph | HMAC-SHA256, clé hors SQL | Comparaison en temps constant | Cycle de vie de la souscription | Synaptix |
 | Microsoft365Connection | `ConsentStateHash` | C | Empreinte du `state` de consentement, à usage unique | Déjà haché | Égalité sur l'empreinte | Expiration courte du `state` | Synaptix |
 
@@ -134,6 +135,7 @@ l'exploitant du service.
 | Microsoft365Source | `DisplayName` | Clair | Sert de clé de tri des bibliothèques dans l'administration et le backoffice. Voir [Arbitrages assumés](#arbitrages). |
 | Organization | `Name`, `Domain` | Clair | Identité de l'organisation cliente, nécessaire à l'exploitation et déjà connue de Synaptix. |
 | AdministrativeAuditEntry | `OldValues`, `NewValues` | Clair | Une liste blanche limite déjà ces colonnes à des champs non sensibles ; les y chiffrer rendrait l'audit inexploitable. Toute extension de la liste blanche doit repasser par ce document. |
+| OperationalIncident | `Summary`, `SafeDetail`, `ResolutionNotes` | Clair | Texte déjà redigé de façon sûre en amont par `OperationalIncidentReporter` (jamais de secret, token ou stack trace brute) ; les chiffrer n'ajouterait rien à la confidentialité et empêcherait les requêtes SQL de support direct. |
 
 <a id="inventaire-clair"></a>
 ## Colonnes autorisées en clair — niveau D
@@ -158,6 +160,7 @@ déjà calculées.
 | Microsoft365List | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId`, `ListId`, `SchemaFingerprint`, `RequiresItemReprocessing` |
 | Microsoft365ListItemWork | `Id`, `OrganizationId`, `Microsoft365SourceId`, `Microsoft365SynchronizationId`, `SiteId`, `ListId`, `ListItemId`, `ETag`, `CreatedDateTime`, `LastModifiedDateTime`, `DeduplicationKey`, `WorkType`, `CreatedAt` |
 | Microsoft365ReindexOperation | `Id`, `OrganizationId`, `Microsoft365ConnectionId`, `RequestedByOperatorId`, `SourceCount`, `CompletedSourceCount`, `DiscoveredDocumentCount`, `ProcessedDocumentCount`, `IgnoredDocumentCount`, `FailedDocumentCount`, `RequestedAt`, `StartedAt`, `CompletedAt`, `LastErrorCode` |
+| OperationalIncident | `Id`, `OccurredAt`, `Subsystem`, `Severity`, `CorrelationId`, `OrganizationId`, `OrganizationMemberId`, `RelatedResourceType`, `RelatedResourceId`, `Status`, `ResolvedAt` |
 | Microsoft365Site | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId` |
 | Microsoft365Source | `Id`, `Microsoft365ConnectionId`, `Kind`, `ExternalResourceId`, `ParentExternalResourceId`, `Status`, `StatusBeforeUnavailable`, `IsIndexed`, `DiscoveredAt`, `EnabledAt`, `LastSuccessfulSynchronizationAt`, `LastSynchronizationAttemptAt`, `NextSynchronizationAt`, `LastErrorCode`, `SynchronizationLeaseId`, `SynchronizationLeaseExpiresAt` |
 | Microsoft365Subscription | `Id`, `Microsoft365SourceId`, `OrganizationId`, `Resource`, `MicrosoftSubscriptionId`, `ExpiresAt`, `LastRenewedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt` |

@@ -1,3 +1,5 @@
+using AssistantCore.Repository.Domain.Enums;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
@@ -57,6 +59,7 @@ public sealed class Microsoft365IngestionWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Microsoft 365 ingestion retention cycle failed.");
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
             }
 
             try
@@ -73,6 +76,7 @@ public sealed class Microsoft365IngestionWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Microsoft 365 reindex progress cycle failed.");
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
             }
 
             try
@@ -89,6 +93,7 @@ public sealed class Microsoft365IngestionWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Microsoft 365 ACL reconciliation cycle failed.");
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
                 continue;
             }
 
@@ -106,6 +111,7 @@ public sealed class Microsoft365IngestionWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Microsoft 365 subscription maintenance cycle failed.");
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
             }
 
             try
@@ -122,6 +128,7 @@ public sealed class Microsoft365IngestionWorker(
             catch (Exception exception)
             {
                 logger.LogError(exception, "Microsoft 365 reconciliation cycle failed.");
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
             }
         }
         while (await timer.WaitForNextTickAsync(stoppingToken));
@@ -153,6 +160,7 @@ public sealed class Microsoft365IngestionWorker(
         catch (Exception exception)
         {
             logger.LogError(exception, "Microsoft 365 pending ingestion cycle failed.");
+            await ReportWorkerIncidentAsync(exception, cancellationToken);
         }
 
         try
@@ -176,6 +184,7 @@ public sealed class Microsoft365IngestionWorker(
         catch (Exception exception)
         {
             logger.LogError(exception, "Microsoft 365 document ingestion cycle failed.");
+            await ReportWorkerIncidentAsync(exception, cancellationToken);
         }
 
         try
@@ -199,6 +208,41 @@ public sealed class Microsoft365IngestionWorker(
         catch (Exception exception)
         {
             logger.LogError(exception, "Microsoft 365 list item ingestion cycle failed.");
+            await ReportWorkerIncidentAsync(exception, cancellationToken);
+        }
+    }
+
+    // Genere son propre correlationId : ce process n'a pas de HttpContext, donc pas de
+    // TraceIdentifier a reutiliser comme le fait ExceptionMiddleware cote HTTP. Entierement
+    // enveloppe dans son propre try/catch : une panne d'observabilite (y compris la
+    // resolution du service, qui peut echouer avant meme d'atteindre OperationalIncidentReporter)
+    // ne doit jamais faire planter la boucle du worker.
+    private async Task ReportWorkerIncidentAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var correlationId = $"worker-{Guid.NewGuid():N}";
+            logger.LogError(
+                "Operational incident captured for worker cycle. CorrelationId: {CorrelationId}",
+                correlationId);
+
+            await using var incidentScope = scopeFactory.CreateAsyncScope();
+            var reporter = incidentScope.ServiceProvider.GetService<IOperationalIncidentReporter>();
+            if (reporter is null)
+            {
+                return;
+            }
+
+            await reporter.ReportAsync(
+                new OperationalIncidentReport(
+                    exception,
+                    correlationId,
+                    SubsystemOverride: OperationalIncidentSubsystem.WorkerJobs),
+                cancellationToken);
+        }
+        catch (Exception reportingException)
+        {
+            logger.LogError(reportingException, "Failed to report an operational incident for a worker cycle.");
         }
     }
 }

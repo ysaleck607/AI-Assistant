@@ -1,6 +1,7 @@
 using AssistantCore.ExternalServices.Services.Azure;
 using AssistantCore.ExternalServices.Entities.Azure;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using Microsoft.Extensions.Options;
 
@@ -11,12 +12,18 @@ public sealed class Microsoft365SearchIndexInitializerAdapter(
     IOptions<AzureAiSearchOptions> searchOptions,
     IOptions<Microsoft365Options> microsoft365Options) : IMicrosoft365SearchIndexInitializer
 {
-    public Task EnsureCreatedAsync(CancellationToken cancellationToken = default)
+    public async Task EnsureCreatedAsync(CancellationToken cancellationToken = default)
     {
         var search = searchOptions.Value;
         var microsoft365 = microsoft365Options.Value;
-        return search.EnsureIndexOnStartup
-            ? client.EnsureCreatedAsync(
+        if (!search.EnsureIndexOnStartup)
+        {
+            return;
+        }
+
+        try
+        {
+            await client.EnsureCreatedAsync(
                 search.Endpoint,
                 search.IndexName,
                 search.ApiKey,
@@ -37,8 +44,14 @@ public sealed class Microsoft365SearchIndexInitializerAdapter(
                     search.PlanningModelEndpoint,
                     search.PlanningModelDeploymentName,
                     search.PlanningModelName,
-                    search.PlanningModelApiKey))
-            : Task.CompletedTask;
+                    search.PlanningModelApiKey));
+        }
+        catch (AzureAiSearchExternalException exception)
+        {
+            throw new AzureAiSearchUnavailableException(
+                "Azure AI Search index initialization failed.",
+                exception);
+        }
     }
 
     private static AzureOpenAiModelConfiguration? CreateModelConfiguration(

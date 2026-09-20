@@ -1,6 +1,7 @@
 using AssistantCore.ExternalServices.Entities.Azure;
 using AssistantCore.ExternalServices.Services.Azure;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Microsoft365.Permissions;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using Microsoft.Extensions.Options;
@@ -11,22 +12,31 @@ public sealed class Microsoft365PassageAclWriterAdapter(
     AzureAiSearchPassageAclClient client,
     IOptions<AzureAiSearchOptions> options) : IMicrosoft365PassageAclWriter
 {
-    public Task SetAvailabilityAsync(
+    public async Task SetAvailabilityAsync(
         IReadOnlyCollection<string> chunkIds,
         bool isAvailable,
         CancellationToken cancellationToken = default)
     {
         var configuration = GetConfiguration();
-        return client.SetAvailabilityAsync(
-            configuration.Endpoint,
-            configuration.IndexName,
-            configuration.ApiKey,
-            chunkIds,
-            isAvailable,
-            cancellationToken);
+        try
+        {
+            await client.SetAvailabilityAsync(
+                configuration.Endpoint,
+                configuration.IndexName,
+                configuration.ApiKey,
+                chunkIds,
+                isAvailable,
+                cancellationToken);
+        }
+        catch (AzureAiSearchExternalException exception)
+        {
+            throw new AzureAiSearchUnavailableException(
+                "Azure AI Search passage availability update failed.",
+                exception);
+        }
     }
 
-    public Task UpdateAclAsync(
+    public async Task UpdateAclAsync(
         IReadOnlyCollection<string> chunkIds,
         Microsoft365Acl acl,
         CancellationToken cancellationToken = default)
@@ -41,12 +51,21 @@ public sealed class Microsoft365PassageAclWriterAdapter(
             acl.HasAnonymousLink,
             acl.HasOrganizationLink,
             acl.Fingerprint)).ToArray();
-        return client.UpdateAclAsync(
-            configuration.Endpoint,
-            configuration.IndexName,
-            configuration.ApiKey,
-            updates,
-            cancellationToken);
+        try
+        {
+            await client.UpdateAclAsync(
+                configuration.Endpoint,
+                configuration.IndexName,
+                configuration.ApiKey,
+                updates,
+                cancellationToken);
+        }
+        catch (AzureAiSearchExternalException exception)
+        {
+            throw new AzureAiSearchUnavailableException(
+                "Azure AI Search passage ACL update failed.",
+                exception);
+        }
     }
 
     private AzureAiSearchOptions GetConfiguration()

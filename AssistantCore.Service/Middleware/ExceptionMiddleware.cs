@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using AssistantCore.Repository.Abstractions;
 using AssistantCore.Service.Application.Exceptions;
+using AssistantCore.Service.Application.Services.Incidents;
 
 namespace AssistantCore.Service.Middleware;
 
@@ -10,8 +11,13 @@ public sealed class ExceptionMiddleware(
     ILogger<ExceptionMiddleware> logger,
     IHostEnvironment environment)
 {
-    public async Task InvokeAsync(HttpContext context)
+    // IOperationalIncidentReporter est scoped : il doit etre resolu par requete via un
+    // parametre de InvokeAsync (et non du constructeur), puisque ce middleware n'est
+    // instancie qu'une seule fois par app.UseMiddleware<ExceptionMiddleware>().
+    public async Task InvokeAsync(HttpContext context, IOperationalIncidentReporter incidentReporter)
     {
+        context.Response.Headers["X-Correlation-Id"] = context.TraceIdentifier;
+
         try
         {
             await next(context);
@@ -109,6 +115,8 @@ public sealed class ExceptionMiddleware(
                 "External sources required by the orchestration are unavailable. Code: {TechnicalCode}.",
                 ExternalSourcesUnavailableException.TechnicalCode);
 
+            await ReportIncidentAsync(context, incidentReporter, exception);
+
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             context.Response.ContentType = "application/json";
 
@@ -122,11 +130,28 @@ public sealed class ExceptionMiddleware(
         {
             logger.LogWarning(exception, "Microsoft 365 consent provider is unavailable.");
 
+            await ReportIncidentAsync(context, incidentReporter, exception);
+
             context.Response.StatusCode = StatusCodes.Status502BadGateway;
             context.Response.ContentType = "application/json";
 
             var response = new ExceptionResponse(
                 "Microsoft 365 consent could not be completed.",
+                environment.IsDevelopment() ? exception.Message : null);
+
+            await context.Response.WriteAsync(JsonSerializer.Serialize(response));
+        }
+        catch (AzureAiSearchUnavailableException exception)
+        {
+            logger.LogWarning(exception, "Azure AI Search request failed.");
+
+            await ReportIncidentAsync(context, incidentReporter, exception);
+
+            context.Response.StatusCode = StatusCodes.Status502BadGateway;
+            context.Response.ContentType = "application/json";
+
+            var response = new ExceptionResponse(
+                "Azure AI Search request failed.",
                 environment.IsDevelopment() ? exception.Message : null);
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
@@ -142,6 +167,8 @@ public sealed class ExceptionMiddleware(
                 exception.ProviderName,
                 exception.TechnicalCode,
                 providerStatusCode);
+
+            await ReportIncidentAsync(context, incidentReporter, exception);
 
             context.Response.StatusCode = exception switch
             {
@@ -164,6 +191,8 @@ public sealed class ExceptionMiddleware(
         {
             logger.LogError(exception, "An unhandled exception occurred while processing the request.");
 
+            await ReportIncidentAsync(context, incidentReporter, exception);
+
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             context.Response.ContentType = "application/json";
 
@@ -173,6 +202,31 @@ public sealed class ExceptionMiddleware(
 
             await context.Response.WriteAsync(JsonSerializer.Serialize(response));
         }
+    }
+
+    private static Task ReportIncidentAsync(
+        HttpContext context,
+        IOperationalIncidentReporter incidentReporter,
+        Exception exception)
+    {
+        return incidentReporter.ReportAsync(
+            new OperationalIncidentReport(
+                exception,
+                context.TraceIdentifier,
+                OrganizationId: TryGetOrganizationIdFromRoute(context)),
+            context.RequestAborted);
+    }
+
+    // Seule source fiable et generique disponible au niveau du middleware : le parametre de
+    // route {organizationId} utilise par les endpoints backoffice. Les endpoints qui ne
+    // l'exposent pas produisent un incident non rattache a une organisation (OrganizationId
+    // nullable, voir OperationalIncident) plutot qu'une resolution fragile via les claims.
+    private static Guid? TryGetOrganizationIdFromRoute(HttpContext context)
+    {
+        return context.Request.RouteValues.TryGetValue("organizationId", out var value)
+            && Guid.TryParse(value?.ToString(), out var organizationId)
+            ? organizationId
+            : null;
     }
 
     private sealed record ExceptionResponse(

@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AssistantCore.Service.Application.Exceptions;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Middleware;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,7 +24,7 @@ public sealed class RequestRateLimitExceptionMiddlewareTests
             new StubHostEnvironment());
 
         // When
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, new NoOpOperationalIncidentReporter());
 
         // Then
         context.Response.Body.Position = 0;
@@ -45,5 +46,12 @@ public sealed class RequestRateLimitExceptionMiddlewareTests
         public string ContentRootPath { get; set; } = Directory.GetCurrentDirectory();
 
         public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
+    }
+
+    internal sealed class NoOpOperationalIncidentReporter : IOperationalIncidentReporter
+    {
+        public Task ReportAsync(
+            OperationalIncidentReport report,
+            CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

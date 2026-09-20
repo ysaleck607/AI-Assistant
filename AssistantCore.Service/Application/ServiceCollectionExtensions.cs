@@ -16,6 +16,7 @@ using AssistantCore.Service.Application.Services.Messages.Tabular;
 using AssistantCore.Service.Application.Services.Messages.Tools;
 using AssistantCore.Service.Application.Services.Messages.Validation;
 using AssistantCore.Service.Application.Services.Microsoft365;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Application.Services.Organizations;
 using AssistantCore.Service.Application.Services.RateLimiting;
 using AssistantCore.Service.Application.Services.TenantAdmission;
@@ -103,6 +104,8 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberManagementService, MemberManagementService>();
         services.AddScoped<IOrganizationManagementService, OrganizationManagementService>();
         services.AddScoped<IBackofficeOrganizationService, BackofficeOrganizationService>();
+        services.AddScoped<IBackofficeIncidentService, BackofficeIncidentService>();
+        services.AddScoped<IBackofficeMessageQualityService, BackofficeMessageQualityService>();
         services.AddMicrosoft365Application();
         services.AddScoped<IMessageProcessingLifecycleService, MessageProcessingLifecycleService>();
         services.AddScoped<IAgentRuntime, FoundryAgentRuntime>();
@@ -179,6 +182,8 @@ public static class ServiceCollectionExtensions
             IMicrosoft365PermissionRoleEvaluator,
             Microsoft365PermissionRoleEvaluator>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<ISensitiveDataRedactor, SensitiveDataRedactor>();
+        services.AddScoped<IOperationalIncidentReporter, OperationalIncidentReporter>();
         return services;
     }
 }

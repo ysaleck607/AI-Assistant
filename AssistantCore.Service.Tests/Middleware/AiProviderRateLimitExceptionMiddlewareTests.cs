@@ -1,5 +1,6 @@
 using System.Text.Json;
 using AssistantCore.Service.Application.Exceptions;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Middleware;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -8,6 +9,9 @@ namespace AssistantCore.Service.Tests.Middleware;
 
 public sealed class AiProviderRateLimitExceptionMiddlewareTests
 {
+    private static readonly IOperationalIncidentReporter NoOpIncidentReporter =
+        new RequestRateLimitExceptionMiddlewareTests.NoOpOperationalIncidentReporter();
+
     [Theory, AutoDomainData]
     public async Task Given_AProviderRateLimit_When_InvokeAsync_Then_ReturnsStable429Code(
         string providerName)
@@ -22,7 +26,7 @@ public sealed class AiProviderRateLimitExceptionMiddlewareTests
             new StubHostEnvironment());
 
         // When
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         // Then
         context.Response.Body.Position = 0;

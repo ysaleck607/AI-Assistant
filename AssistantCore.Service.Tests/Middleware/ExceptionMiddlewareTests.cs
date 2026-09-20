@@ -1,6 +1,7 @@
 using System.Text.Json;
 using AssistantCore.Repository.Abstractions;
 using AssistantCore.Service.Application.Exceptions;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Middleware;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -9,6 +10,9 @@ namespace AssistantCore.Service.Tests.Middleware;
 
 public sealed class ExceptionMiddlewareTests
 {
+    private static readonly IOperationalIncidentReporter NoOpIncidentReporter =
+        new RequestRateLimitExceptionMiddlewareTests.NoOpOperationalIncidentReporter();
+
     [Theory]
     [InlineData("unauthorized", StatusCodes.Status401Unauthorized)]
     [InlineData("forbidden", StatusCodes.Status403Forbidden)]
@@ -28,7 +32,7 @@ public sealed class ExceptionMiddlewareTests
             Environments.Development);
 
         // When
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         // Then
         using var response = await ReadResponse(context);
@@ -46,7 +50,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
@@ -64,7 +68,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
@@ -79,7 +83,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
@@ -93,7 +97,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status403Forbidden, context.Response.StatusCode);
@@ -108,7 +112,7 @@ public sealed class ExceptionMiddlewareTests
             _ => Task.FromException(new InvalidOperationException("Database unavailable.")),
             Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
@@ -129,7 +133,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(expectedStatusCode, context.Response.StatusCode);
@@ -144,7 +148,7 @@ public sealed class ExceptionMiddlewareTests
         var context = CreateHttpContext();
         var middleware = CreateMiddleware(_ => Task.FromException(exception), Environments.Development);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status502BadGateway, context.Response.StatusCode);
@@ -162,7 +166,7 @@ public sealed class ExceptionMiddlewareTests
             _ => Task.FromCanceled(cancellationSource.Token),
             Environments.Production);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         Assert.Equal(0, context.Response.Body.Length);
         Assert.Null(context.Response.ContentType);
@@ -176,7 +180,7 @@ public sealed class ExceptionMiddlewareTests
             _ => Task.FromException(new InvalidOperationException("Sensitive detail.")),
             Environments.Production);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         using var response = await ReadResponse(context);
         Assert.Equal(StatusCodes.Status500InternalServerError, context.Response.StatusCode);
@@ -197,7 +201,7 @@ public sealed class ExceptionMiddlewareTests
             },
             Environments.Production);
 
-        await middleware.InvokeAsync(context);
+        await middleware.InvokeAsync(context, NoOpIncidentReporter);
 
         Assert.True(nextWasCalled);
         Assert.Equal(StatusCodes.Status204NoContent, context.Response.StatusCode);

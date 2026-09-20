@@ -49,6 +49,9 @@ public static class ServiceCollectionExtensions
             IMicrosoft365ReindexOperationRepository,
             Microsoft365ReindexOperationRepository>();
         services.AddScoped<IAdministrativeAuditRepository, AdministrativeAuditRepository>();
+        services.AddScoped<IOperationalIncidentRepository, OperationalIncidentRepository>();
+        services.AddScoped<IOperationalIncidentQueries, OperationalIncidentQueries>();
+        services.AddScoped<IBackofficeMessageWarningQueries, BackofficeMessageWarningQueries>();
 
         return services;
     }
