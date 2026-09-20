@@ -12,9 +12,6 @@ param environmentName string
 @maxLength(8)
 param nameSuffix string
 
-@description('Resource group containing the shared ACR.')
-param sharedResourceGroupName string
-
 @description('Immutable backend image tag, normally sha-<Git commit SHA>.')
 param backendImageTag string
 
@@ -166,16 +163,6 @@ resource acrPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   name: acrPullIdentityName
   location: location
   tags: tags
-}
-
-module acrPullRole './modules/acr-pull-role-subscription.bicep' = {
-  name: 'acr-pull-${environmentName}'
-  scope: subscription()
-  params: {
-    acrName: acrName
-    sharedResourceGroupName: sharedResourceGroupName
-    principalId: acrPullIdentity.properties.principalId
-  }
 }
 
 module apiSecretRoles './modules/key-vault-secret-role.bicep' = [for secretName in runtimeSecretNames: {
@@ -587,7 +574,6 @@ resource api 'Microsoft.App/containerApps@2025-01-01' = {
     }
   }
   dependsOn: [
-    acrPullRole
     apiSecretRoles
     apiDataProtectionBlobRole
     apiDataProtectionKeyRole
@@ -645,7 +631,6 @@ resource worker 'Microsoft.App/containerApps@2025-01-01' = {
     }
   }
   dependsOn: [
-    acrPullRole
     workerSecretRoles
     workerDataProtectionBlobRole
     workerDataProtectionKeyRole
@@ -816,7 +801,6 @@ resource spa 'Microsoft.App/containerApps@2025-01-01' = {
     }
   }
   dependsOn: [
-    acrPullRole
     bffSecretRole
     bffDataProtectionBlobRole
     bffDataProtectionKeyRole
@@ -908,7 +892,6 @@ resource migrationsJob 'Microsoft.App/jobs@2025-01-01' = {
     }
   }
   dependsOn: [
-    acrPullRole
     migrationsSecretRole
   ]
 }

@@ -184,10 +184,49 @@ jobs:
           echo "BACKEND_TAG=${BACKEND_TAG}" >> "$GITHUB_ENV"
           echo "SPA_TAG=${SPA_TAG}" >> "$GITHUB_ENV"
 
+      - name: Ensure ACR pull access
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
+        run: |
+          ACR_PULL_IDENTITY="id-assistant-acr-${{ inputs.environment_name }}"
+
+          PRINCIPAL_ID="$(az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$ACR_PULL_IDENTITY" \
+            --query principalId -o tsv 2>/dev/null || true)"
+
+          if [ -z "$PRINCIPAL_ID" ]; then
+            PRINCIPAL_ID="$(az identity create \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$ACR_PULL_IDENTITY" \
+              --location "$LOCATION" \
+              --tags application=assistant environment=${{ inputs.environment_name }} managedBy=bicep \
+              --query principalId -o tsv)"
+          fi
+
+          ACR_ID="$(az acr show \
+            --name "$ACR_NAME" \
+            --query id -o tsv)"
+
+          ACR_PULL_ASSIGNMENT="$(az role assignment list \
+            --assignee-object-id "$PRINCIPAL_ID" \
+            --role AcrPull \
+            --scope "$ACR_ID" \
+            --query '[0].id' -o tsv)"
+
+          if [ -z "$ACR_PULL_ASSIGNMENT" ]; then
+            az role assignment create \
+              --assignee-object-id "$PRINCIPAL_ID" \
+              --assignee-principal-type ServicePrincipal \
+              --role AcrPull \
+              --scope "$ACR_ID" \
+              --only-show-errors >/dev/null
+          fi
+
       - name: Preview final secure topology
         if: ${{ inputs.operation == 'deploy-environment' }}
         env:
-          SHARED_RESOURCE_GROUP: ${{ vars.AZURE_SHARED_RESOURCE_GROUP }}
           BFF_ENTRA_CLIENT_ID: ${{ vars.AZURE_BFF_ENTRA_CLIENT_ID }}
         run: |
           az deployment group what-if \
@@ -197,7 +236,6 @@ jobs:
               location="$LOCATION" \
               environmentName="${{ inputs.environment_name }}" \
               nameSuffix="$NAME_SUFFIX" \
-              sharedResourceGroupName="$SHARED_RESOURCE_GROUP" \
               backendImageTag="$BACKEND_TAG" \
               spaImageTag="$SPA_TAG" \
               bffEntraClientId="$BFF_ENTRA_CLIENT_ID"
@@ -205,7 +243,6 @@ jobs:
       - name: Deploy final secure topology
         if: ${{ inputs.operation == 'deploy-environment' }}
         env:
-          SHARED_RESOURCE_GROUP: ${{ vars.AZURE_SHARED_RESOURCE_GROUP }}
           BFF_ENTRA_CLIENT_ID: ${{ vars.AZURE_BFF_ENTRA_CLIENT_ID }}
         run: |
           az deployment group create \
@@ -216,7 +253,6 @@ jobs:
               location="$LOCATION" \
               environmentName="${{ inputs.environment_name }}" \
               nameSuffix="$NAME_SUFFIX" \
-              sharedResourceGroupName="$SHARED_RESOURCE_GROUP" \
               backendImageTag="$BACKEND_TAG" \
               spaImageTag="$SPA_TAG" \
               bffEntraClientId="$BFF_ENTRA_CLIENT_ID"
