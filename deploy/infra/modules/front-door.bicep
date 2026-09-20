@@ -221,11 +221,6 @@ resource securityPolicy 'Microsoft.Cdn/profiles/securityPolicies@2025-04-15' = {
           patternsToMatch: [
             '/*'
           ]
-          routes: [
-            {
-              id: route.id
-            }
-          ]
         }
       ]
     }

@@ -168,11 +168,12 @@ resource acrPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   tags: tags
 }
 
-module acrPullRole './modules/acr-pull-role.bicep' = {
+module acrPullRole './modules/acr-pull-role-subscription.bicep' = {
   name: 'acr-pull-${environmentName}'
-  scope: resourceGroup(sharedResourceGroupName)
+  scope: subscription()
   params: {
     acrName: acrName
+    sharedResourceGroupName: sharedResourceGroupName
     principalId: acrPullIdentity.properties.principalId
   }
 }
