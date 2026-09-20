@@ -4,7 +4,7 @@ set -euo pipefail
 RESOURCE_GROUP="${1:?resource group is required}"
 ENVIRONMENT_NAME="${2:?environment name is required}"
 
-CONTAINER_ENV="cae-assistant-${ENVIRONMENT_NAME}"
+CONTAINER_ENV="cae-assistant-${ENVIRONMENT_NAME}-private"
 REQUEST_MESSAGE="OnPremia Front Door private origin"
 
 ENV_ID="$(az containerapp env show \

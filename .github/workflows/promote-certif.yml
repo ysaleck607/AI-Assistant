@@ -142,18 +142,18 @@ jobs:
       - name: Run CERTIF Flyway job
         run: |
           az containerapp job update \
-            --name caj-assistant-migrations-certif \
+            --name caj-assistant-migrations-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --image "$MIGRATIONS_IMAGE"
 
           EXECUTION_NAME="$(az containerapp job start \
-            --name caj-assistant-migrations-certif \
+            --name caj-assistant-migrations-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --query name --output tsv)"
 
           for attempt in $(seq 1 60); do
             STATUS="$(az containerapp job execution show \
-              --name caj-assistant-migrations-certif \
+              --name caj-assistant-migrations-certif-private \
               --job-execution-name "$EXECUTION_NAME" \
               --resource-group "$CERTIF_RESOURCE_GROUP" \
               --query properties.status --output tsv)"
@@ -172,25 +172,25 @@ jobs:
       - name: Deploy CERTIF release candidate for readiness checks
         run: |
           az containerapp update \
-            --name ca-assistant-api-certif \
+            --name ca-assistant-api-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --container-name api \
             --image "$API_IMAGE" \
             --min-replicas 1
           az containerapp update \
-            --name ca-assistant-worker-certif \
+            --name ca-assistant-worker-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --container-name worker \
             --image "$WORKER_IMAGE" \
             --min-replicas 0
           az containerapp update \
-            --name ca-assistant-spa-certif \
+            --name ca-assistant-spa-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --container-name spa \
             --image "$SPA_IMAGE" \
             --min-replicas 1
           az containerapp update \
-            --name ca-assistant-spa-certif \
+            --name ca-assistant-spa-certif-private \
             --resource-group "$CERTIF_RESOURCE_GROUP" \
             --container-name bff \
             --image "$BFF_IMAGE" \

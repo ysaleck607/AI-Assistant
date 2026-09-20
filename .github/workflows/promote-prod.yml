@@ -145,18 +145,18 @@ jobs:
       - name: Run PROD Flyway job
         run: |
           az containerapp job update \
-            --name caj-assistant-migrations-prod \
+            --name caj-assistant-migrations-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --image "$MIGRATIONS_IMAGE"
 
           EXECUTION_NAME="$(az containerapp job start \
-            --name caj-assistant-migrations-prod \
+            --name caj-assistant-migrations-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --query name --output tsv)"
 
           for attempt in $(seq 1 60); do
             STATUS="$(az containerapp job execution show \
-              --name caj-assistant-migrations-prod \
+              --name caj-assistant-migrations-prod-private \
               --job-execution-name "$EXECUTION_NAME" \
               --resource-group "$PROD_RESOURCE_GROUP" \
               --query properties.status --output tsv)"
@@ -171,25 +171,25 @@ jobs:
       - name: Deploy certified digests to PROD
         run: |
           az containerapp update \
-            --name ca-assistant-api-prod \
+            --name ca-assistant-api-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name api \
             --image "$API_IMAGE" \
             --min-replicas 2
           az containerapp update \
-            --name ca-assistant-worker-prod \
+            --name ca-assistant-worker-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name worker \
             --image "$WORKER_IMAGE" \
             --min-replicas 1
           az containerapp update \
-            --name ca-assistant-spa-prod \
+            --name ca-assistant-spa-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name spa \
             --image "$SPA_IMAGE" \
             --min-replicas 2
           az containerapp update \
-            --name ca-assistant-spa-prod \
+            --name ca-assistant-spa-prod-private \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name bff \
             --image "$BFF_IMAGE" \

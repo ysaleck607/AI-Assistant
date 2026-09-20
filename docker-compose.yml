@@ -19,7 +19,7 @@ services:
     depends_on:
       - sqlserver
     command:
-      - -url=jdbc:sqlserver://sqlserver:1433;databaseName=master;encrypt=false;trustServerCertificate=true
+      - -url=jdbc:sqlserver://sqlserver:1433;databaseName=AssistantCoreDb;encrypt=false;trustServerCertificate=true
       - -user=sa
       - -password=${SQL_SERVER_PASSWORD}
       - -connectRetries=60
