@@ -44,18 +44,26 @@ for attempt in $(seq 1 24); do
       --query 'properties.template.containers[].{name:name,image:image}' \
       --output json)"
 
-    if jq -e --argjson expected "$EXPECTED_IMAGES_JSON" --argjson actual "$actual_images" '
-      ($expected | to_entries) as $expectedEntries
-      | all($expectedEntries[];
-          . as $expectedImage
-          | any($actual[];
-              .name == $expectedImage.key and .image == $expectedImage.value))
-    ' >/dev/null; then
+    images_match=true
+    while IFS=$'\t' read -r container_name expected_image; do
+      actual_image="$(jq -r --arg containerName "$container_name" '
+        first(.[] | select(.name == $containerName) | .image) // ""
+      ' <<<"$actual_images")"
+
+      if [[ "$actual_image" != "$expected_image" ]]; then
+        images_match=false
+        break
+      fi
+    done < <(jq -r 'to_entries[] | [.key, .value] | @tsv' <<<"$EXPECTED_IMAGES_JSON")
+
+    if [[ "$images_match" == true ]]; then
       echo "Container App ${APP_NAME} revision ${revision} is ready."
       exit 0
     fi
 
     echo "Container App ${APP_NAME} revision ${revision} does not use the expected images." >&2
+    echo "Expected: ${EXPECTED_IMAGES_JSON}" >&2
+    echo "Actual:" >&2
     echo "$actual_images" >&2
     exit 1
   fi
