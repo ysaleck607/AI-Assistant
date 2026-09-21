@@ -76,8 +76,23 @@ docker exec -i assistantcore-sqlserver \
     -C -S localhost -U sa -P "$SQL_SERVER_PASSWORD" \
     < test-support/local/reset-local-database.sql
 
-for migration_file in AssistantCore.Repository/Database/Flyway/sql/*.sql; do
-    sed 's/AssistantCoreDb/AssistantCoreLocalDb/g' \
+# Les migrations versionnees (V*) doivent s'executer dans l'ordre avant les
+# migrations repetables (R__*, ex. provisioning des utilisateurs geres), qui
+# peuvent presupposer que la base existe deja. Un tri alphabetique brut du
+# dossier ferait passer R__ avant V01_000 (creation de la base) et echouerait.
+#
+# Les placeholders Flyway (${API_CLIENT_ID}, etc.) ne sont normalement
+# substitues que par le conteneur Flyway reel (voir les valeurs par defaut
+# dans AssistantCore.Repository/Database/Flyway/Dockerfile). Cette relecture
+# manuelle doit reproduire les memes valeurs desactivees pour que le bloc de
+# provisioning des identites managees se saute comme en local/CI.
+for migration_file in AssistantCore.Repository/Database/Flyway/sql/V*.sql AssistantCore.Repository/Database/Flyway/sql/R__*.sql; do
+    sed \
+        -e 's/AssistantCoreDb/AssistantCoreLocalDb/g' \
+        -e 's/\${API_IDENTITY_NAME}/disabled-api/g' \
+        -e 's/\${API_CLIENT_ID}/00000000-0000-0000-0000-000000000000/g' \
+        -e 's/\${WORKER_IDENTITY_NAME}/disabled-worker/g' \
+        -e 's/\${WORKER_CLIENT_ID}/00000000-0000-0000-0000-000000000000/g' \
         test-support/local/sqlcmd-session-settings.sql \
         "$migration_file" \
         | docker exec -i assistantcore-sqlserver \

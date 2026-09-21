@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Models.Messages;
@@ -286,6 +287,18 @@ public sealed class FoundryAgentRuntime(
             .SelectMany(result => result.Warnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
+
+        // A tool ran but returned nothing to cite: the question could not be answered
+        // from indexed content. This is silent otherwise, so it is surfaced as a
+        // MessageWarning to feed the backoffice content-gap report (#3).
+        if (executedToolResults.Count > 0 && allEvidence.Length == 0)
+        {
+            warnings =
+            [
+                .. warnings,
+                $"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvée pour répondre à cette question."
+            ];
+        }
 
         logger.LogInformation(
             "Foundry agent turn completed in {ElapsedMilliseconds} ms with {ModelCallCount} model calls, {ToolCallCount} tool calls, {InputTokens} input tokens and {OutputTokens} output tokens. Selected {CitationCount} exact citations from {EvidenceCount} retrieved evidence items.",

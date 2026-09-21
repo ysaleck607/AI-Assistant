@@ -1,3 +1,4 @@
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Persistence;
@@ -30,7 +31,7 @@ public sealed class BackofficeMessageWarningQueriesTests
         var queries = new BackofficeMessageWarningQueries(dbContext);
 
         // When
-        var result = await queries.SearchAsync(organizationA.Id, null, null, 1, 25);
+        var result = await queries.SearchAsync(organizationA.Id, null, null, false, 1, 25);
 
         // Then
         var item = Assert.Single(result.Items);
@@ -60,7 +61,7 @@ public sealed class BackofficeMessageWarningQueriesTests
         var queries = new BackofficeMessageWarningQueries(dbContext);
 
         // When
-        var result = await queries.SearchAsync(organizationA.Id, null, null, 1, 25);
+        var result = await queries.SearchAsync(organizationA.Id, null, null, false, 1, 25);
 
         // Then
         Assert.All(result.Items, item => Assert.Equal(organizationA.Id, item.OrganizationId));
@@ -90,6 +91,7 @@ public sealed class BackofficeMessageWarningQueriesTests
             null,
             DateTimeOffset.Parse("2026-09-10T00:00:00Z"),
             DateTimeOffset.Parse("2026-09-20T00:00:00Z"),
+            false,
             1,
             25);
 
@@ -106,11 +108,111 @@ public sealed class BackofficeMessageWarningQueriesTests
         var queries = new BackofficeMessageWarningQueries(dbContext);
 
         // When
-        var result = await queries.SearchAsync(Guid.NewGuid(), null, null, 1, 25);
+        var result = await queries.SearchAsync(Guid.NewGuid(), null, null, false, 1, 25);
 
         // Then
         Assert.Empty(result.Items);
         Assert.Equal(0, result.TotalCount);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ContentGapAndRegularWarning_When_SearchAsyncWithContentGapsOnly_Then_OnlyTheContentGapIsReturned(
+        Guid databaseId)
+    {
+        // Given
+        var organization = CreateOrganization("MetalPro");
+        var conversation = CreateConversation(organization.Id);
+        var regularMessage = CreateMessage(conversation.Id);
+        var gapMessage = CreateMessage(conversation.Id);
+        await using var dbContext = CreateDbContext(databaseId);
+        dbContext.Organizations.Add(organization);
+        dbContext.Conversations.Add(conversation);
+        dbContext.Messages.AddRange(regularMessage, gapMessage);
+        dbContext.MessageWarnings.AddRange(
+            CreateWarning(regularMessage.Id, "Reponse incertaine."),
+            CreateWarning(
+                gapMessage.Id,
+                $"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvee pour repondre a cette question."));
+        await dbContext.SaveChangesAsync();
+        var queries = new BackofficeMessageWarningQueries(dbContext);
+
+        // When
+        var result = await queries.SearchAsync(organization.Id, null, null, true, 1, 25);
+
+        // Then
+        var item = Assert.Single(result.Items);
+        Assert.True(item.IsContentGap);
+        Assert.Equal(gapMessage.Id, item.MessageId);
+        Assert.Equal(
+            "Aucune preuve documentaire trouvee pour repondre a cette question.",
+            item.Content);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ContentGapWarning_When_SearchAsync_Then_QuestionTextIsThePrecedingUserMessage(
+        Guid databaseId)
+    {
+        // Given
+        var organization = CreateOrganization("MetalPro");
+        var conversation = CreateConversation(organization.Id);
+        var userMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:00Z"),
+            MessageRole.User,
+            "Quel est le processus de remboursement ?");
+        var assistantMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:05Z"));
+        await using var dbContext = CreateDbContext(databaseId);
+        dbContext.Organizations.Add(organization);
+        dbContext.Conversations.Add(conversation);
+        dbContext.Messages.AddRange(userMessage, assistantMessage);
+        dbContext.MessageWarnings.Add(
+            CreateWarning(
+                assistantMessage.Id,
+                $"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvee pour repondre a cette question."));
+        await dbContext.SaveChangesAsync();
+        var queries = new BackofficeMessageWarningQueries(dbContext);
+
+        // When
+        var result = await queries.SearchAsync(organization.Id, null, null, true, 1, 25);
+
+        // Then
+        var item = Assert.Single(result.Items);
+        Assert.Equal("Quel est le processus de remboursement ?", item.QuestionText);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_RegularWarning_When_SearchAsync_Then_QuestionTextIsNeverPopulated(
+        Guid databaseId)
+    {
+        // Given : garde de confidentialite - jamais le contenu du message pour les
+        // avertissements qui ne sont pas des lacunes de contenu.
+        var organization = CreateOrganization("MetalPro");
+        var conversation = CreateConversation(organization.Id);
+        var userMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:00Z"),
+            MessageRole.User,
+            "Question confidentielle.");
+        var assistantMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:05Z"));
+        await using var dbContext = CreateDbContext(databaseId);
+        dbContext.Organizations.Add(organization);
+        dbContext.Conversations.Add(conversation);
+        dbContext.Messages.AddRange(userMessage, assistantMessage);
+        dbContext.MessageWarnings.Add(CreateWarning(assistantMessage.Id, "Reponse incertaine."));
+        await dbContext.SaveChangesAsync();
+        var queries = new BackofficeMessageWarningQueries(dbContext);
+
+        // When
+        var result = await queries.SearchAsync(organization.Id, null, null, false, 1, 25);
+
+        // Then
+        var item = Assert.Single(result.Items);
+        Assert.False(item.IsContentGap);
+        Assert.Null(item.QuestionText);
     }
 
     private static AssistantCoreDbContext CreateDbContext(Guid databaseId)
@@ -145,15 +247,19 @@ public sealed class BackofficeMessageWarningQueriesTests
         UpdatedAt = DateTimeOffset.Parse("2026-09-10T00:00:00Z")
     };
 
-    private static Message CreateMessage(Guid conversationId, DateTimeOffset? createdAt = null)
+    private static Message CreateMessage(
+        Guid conversationId,
+        DateTimeOffset? createdAt = null,
+        MessageRole role = MessageRole.Assistant,
+        string content = "Reponse de test.")
     {
         var timestamp = createdAt ?? DateTimeOffset.Parse("2026-09-15T00:00:00Z");
         return new Message
         {
             Id = Guid.NewGuid(),
             ConversationId = conversationId,
-            Role = MessageRole.Assistant,
-            Content = "Reponse de test.",
+            Role = role,
+            Content = content,
             ProcessingStatus = MessageProcessingStatus.Completed,
             CreatedAt = timestamp,
             UpdatedAt = timestamp

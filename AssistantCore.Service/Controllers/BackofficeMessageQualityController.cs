@@ -11,7 +11,10 @@ namespace AssistantCore.Service.Controllers;
 /// <summary>
 /// Resume des reponses signalees par l'agent (#3) : s'appuie sur MessageWarning, deja
 /// enregistre par MessageProcessingLifecycleService mais jamais expose jusqu'ici. Ne
-/// retourne jamais le contenu integral d'un message, seulement le texte de l'avertissement.
+/// retourne jamais le contenu integral d'un message, sauf pour les lacunes de contenu
+/// (contentGapsOnly / IsContentGap) : la question de l'utilisateur y est incluse
+/// (QuestionText) car l'analyse des lacunes documentaires est sans valeur sans elle -
+/// deviation assumee de la regle par defaut, decidee avec le produit.
 /// </summary>
 [ApiController]
 [Authorize(Policy = ApiAuthorizationPolicies.ManagementAdmin)]
@@ -27,10 +30,11 @@ public sealed class BackofficeMessageQualityController(IDispatcher dispatcher) :
         [FromQuery] Guid? organizationId = null,
         [FromQuery] DateTimeOffset? from = null,
         [FromQuery] DateTimeOffset? to = null,
+        [FromQuery] bool contentGapsOnly = false,
         CancellationToken cancellationToken = default)
     {
         var response = await dispatcher.SendAsync(
-            new GetBackofficeMessageWarningsQuery(page, pageSize, organizationId, from, to),
+            new GetBackofficeMessageWarningsQuery(page, pageSize, organizationId, from, to, contentGapsOnly),
             cancellationToken);
 
         return Ok(response);

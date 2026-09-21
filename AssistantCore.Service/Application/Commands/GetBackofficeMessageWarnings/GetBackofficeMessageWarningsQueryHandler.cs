@@ -18,6 +18,7 @@ public sealed class GetBackofficeMessageWarningsQueryHandler(
             request.OrganizationId,
             request.From,
             request.To,
+            request.ContentGapsOnly,
             cancellationToken);
     }
 }

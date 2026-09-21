@@ -9,7 +9,9 @@ public sealed record BackofficeMessageWarningSummaryDto(
     Guid OrganizationId,
     string OrganizationName,
     string Content,
-    DateTimeOffset OccurredAt)
+    DateTimeOffset OccurredAt,
+    bool IsContentGap,
+    string? QuestionText)
 {
     public static BackofficeMessageWarningSummaryDto FromData(BackofficeMessageWarningSummaryData data) => new(
         data.Id,
@@ -18,5 +20,7 @@ public sealed record BackofficeMessageWarningSummaryDto(
         data.OrganizationId,
         data.OrganizationName,
         data.Content,
-        data.OccurredAt);
+        data.OccurredAt,
+        data.IsContentGap,
+        data.QuestionText);
 }

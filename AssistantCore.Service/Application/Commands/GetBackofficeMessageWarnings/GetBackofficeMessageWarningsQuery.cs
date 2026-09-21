@@ -8,4 +8,5 @@ public sealed record GetBackofficeMessageWarningsQuery(
     int PageSize,
     Guid? OrganizationId,
     DateTimeOffset? From,
-    DateTimeOffset? To) : IRequest<BackofficeMessageWarningListResponse>;
+    DateTimeOffset? To,
+    bool ContentGapsOnly) : IRequest<BackofficeMessageWarningListResponse>;

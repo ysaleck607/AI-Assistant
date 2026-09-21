@@ -29,6 +29,7 @@ public sealed class BackofficeMessageQualityControllerTests
             organizationId: organizationId,
             from: from,
             to: to,
+            contentGapsOnly: true,
             cancellationToken: cancellationToken);
 
         // Then
@@ -40,7 +41,25 @@ public sealed class BackofficeMessageQualityControllerTests
         Assert.Equal(organizationId, query.OrganizationId);
         Assert.Equal(from, query.From);
         Assert.Equal(to, query.To);
+        Assert.True(query.ContentGapsOnly);
         Assert.Equal(cancellationToken, dispatcher.ReceivedCancellationToken);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_NoContentGapsFilter_When_GetWarnings_Then_DefaultsToFalse(
+        CancellationToken cancellationToken,
+        BackofficeMessageWarningListResponse response)
+    {
+        // Given
+        var dispatcher = new RecordingDispatcher { Response = response };
+        var controller = new BackofficeMessageQualityController(dispatcher);
+
+        // When
+        await controller.GetWarnings(cancellationToken: cancellationToken);
+
+        // Then
+        var query = Assert.IsType<GetBackofficeMessageWarningsQuery>(dispatcher.ReceivedRequest);
+        Assert.False(query.ContentGapsOnly);
     }
 
     [Fact]

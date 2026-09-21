@@ -10,5 +10,6 @@ public interface IBackofficeMessageQualityService
         Guid? organizationId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        bool contentGapsOnly,
         CancellationToken cancellationToken = default);
 }

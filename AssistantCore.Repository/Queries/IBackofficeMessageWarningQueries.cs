@@ -6,6 +6,7 @@ public interface IBackofficeMessageWarningQueries
         Guid? organizationId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        bool contentGapsOnly,
         int page,
         int pageSize,
         CancellationToken cancellationToken = default);

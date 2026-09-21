@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Models.Messages;
@@ -85,6 +86,51 @@ public sealed class FoundryAgentRuntimeTests
         Assert.Single(router.ReceivedCalls);
         Assert.Equal(evidence, Assert.Single(result.Citations));
         Assert.Equal(1, result.Usage.ToolCallCount);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ToolExecutedWithNoEvidence_When_RunAsync_Then_ReturnsNoEvidenceFoundWarning(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var router = new RecordingToolExecutionRouter(
+            ToolExecutionResult.Succeeded("tool-result", []));
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Je n'ai pas trouvé d'information à ce sujet.", "agent@1", 20, 7, 2),
+            invokeFirstTool: true);
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedEnterpriseSearchTool()]),
+            new RecordingToolCallValidator(),
+            router);
+
+        // When
+        var result = await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        var warning = Assert.Single(result.Warnings);
+        Assert.StartsWith(MessageWarningMarkers.NoEvidenceFoundPrefix, warning, StringComparison.Ordinal);
+        Assert.Empty(result.Citations);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_NoToolWasCalled_When_RunAsync_Then_DoesNotReportANoEvidenceWarning(
+        StartedMessageProcessing processing)
+    {
+        // Given : une réponse conversationnelle sans recherche n'est pas une lacune de contenu.
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Bonjour, comment puis-je vous aider ?", "agent@1", 10, 4, 1));
+        var runtime = CreateRuntime(client, new EmptyToolRegistry());
+
+        // When
+        var result = await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        Assert.Empty(result.Warnings);
     }
 
     [Theory, AutoDomainData]

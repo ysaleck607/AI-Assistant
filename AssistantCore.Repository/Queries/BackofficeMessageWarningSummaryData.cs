@@ -7,4 +7,6 @@ public sealed record BackofficeMessageWarningSummaryData(
     Guid OrganizationId,
     string OrganizationName,
     string Content,
-    DateTimeOffset OccurredAt);
+    DateTimeOffset OccurredAt,
+    bool IsContentGap,
+    string? QuestionText);

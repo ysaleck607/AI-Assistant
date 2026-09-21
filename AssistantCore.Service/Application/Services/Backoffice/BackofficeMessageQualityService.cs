@@ -16,6 +16,7 @@ public sealed class BackofficeMessageQualityService(IBackofficeMessageWarningQue
         Guid? organizationId,
         DateTimeOffset? from,
         DateTimeOffset? to,
+        bool contentGapsOnly,
         CancellationToken cancellationToken = default)
     {
         var normalizedPage = page <= 0 ? DefaultPage : page;
@@ -27,6 +28,7 @@ public sealed class BackofficeMessageQualityService(IBackofficeMessageWarningQue
             organizationId,
             from,
             to,
+            contentGapsOnly,
             normalizedPage,
             normalizedPageSize,
             cancellationToken);
