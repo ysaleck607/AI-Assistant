@@ -30,7 +30,7 @@ PATCH /api/members/{memberId}/status
 ## Accès
 
 L'appelant doit être un membre interne actif dont le jeton contient
-`AssistantCore.Access` et `tenantAdmin`. Le membre cible doit appartenir à la
+`AssistantCore.Access` et `TenantAdmin`. Le membre cible doit appartenir à la
 même organisation. Le rôle indicatif en base n'autorise pas cet endpoint.
 
 <a id="member-status-contract"></a>
@@ -65,7 +65,7 @@ localement un nouveau membre.
 
 ### Désactivation autorisée
 
-Le jeton d'Alice contient `tenantAdmin`. Bob est un membre actif de la même organisation. Alice
+Le jeton d'Alice contient `TenantAdmin`. Bob est un membre actif de la même organisation. Alice
 envoie `{"status":"Inactive"}` pour Bob. Le backend :
 
 1. retrouve Alice et son organisation depuis le JWT;
@@ -91,13 +91,13 @@ sans modifier la version et sans créer un deuxième audit.
 - Un membre désactivé est refusé par tous les endpoints au prochain appel,
   même si son access token Microsoft reste valide.
 - L'endpoint ne modifie pas l'affectation Entra `AssistantCore.Access`.
-- L'endpoint ne peut pas déterminer les autres `tenantAdmin` depuis les rôles
+- L'endpoint ne peut pas déterminer les autres `TenantAdmin` depuis les rôles
   indicatifs en base et n'applique donc pas de règle de « dernier Admin ».
 
 <a id="member-status-flow"></a>
 ## Traitement
 
-1. Valider le JWT, l'organisation, le membre courant et son app role `tenantAdmin`.
+1. Valider le JWT, l'organisation, le membre courant et son app role `TenantAdmin`.
 2. Valider `memberId` et la valeur du statut.
 3. Charger la cible avec l'organisation courante.
 4. Refuser une modification de soi-même.
@@ -112,7 +112,7 @@ Le flow respecte `Controller -> IDispatcher -> Handler -> Application Service ->
 
 - `400` : identifiant/statut invalide ou modification de soi-même.
 - `401` : token absent ou invalide.
-- `403` : claim `tenantAdmin` absent, membre ou organisation inactive.
+- `403` : claim `TenantAdmin` absent, membre ou organisation inactive.
 - `404` : cible absente ou appartenant à une autre organisation.
 - `409` : modification concurrente du membre cible.
 
@@ -125,7 +125,7 @@ nouveau statut, la date UTC et le correlation ID, sans token ni claims complets.
 <a id="member-status-acceptance"></a>
 ## Critères d'acceptation
 
-- Un `tenantAdmin` peut désactiver et réactiver un autre membre de son organisation.
+- Un `TenantAdmin` peut désactiver et réactiver un autre membre de son organisation.
 - Un membre désactivé est immédiatement refusé par les endpoints protégés.
 - Le rôle du membre ne change pas.
 - L'isolation des organisations et l'audit sont testés.

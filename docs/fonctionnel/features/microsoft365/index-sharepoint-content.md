@@ -343,7 +343,7 @@ connexion Microsoft 365.
 
 Le service retrouve l'utilisateur et son organisation depuis le JWT. Aucun
 `organizationId` n'est accepté depuis la requête. Il vérifie ensuite que le
-jeton contient `AssistantCore.Access` et `tenantAdmin`; sinon, il retourne
+jeton contient `AssistantCore.Access` et `TenantAdmin`; sinon, il retourne
 `403 Forbidden`. Le rôle indicatif conservé en base n'autorise pas cette action.
 
 Le service génère un `state` contenant l'organisation, un nonce aléatoire et
@@ -480,7 +480,7 @@ Authorization: Bearer <JWT AssistantCore>
 
 Le controller transmet une commande au `IDispatcher`. Le handler appelle le
 service de connexion, qui retrouve l'organisation depuis le JWT et exige le
-claim `tenantAdmin`. Aucun `organizationId` n'est accepté dans la requête.
+claim `TenantAdmin`. Aucun `organizationId` n'est accepté dans la requête.
 
 Le service recherche la connexion avec son identifiant et l'organisation
 courante. Une connexion appartenant à une autre organisation est traitée comme
@@ -601,13 +601,13 @@ l'onboarding n'est pas terminé (consentement valide, au moins un site
 sélectionné et au moins une source enfant activée), le backend refuse
 `403 Forbidden` avec le code métier
 `tenant_admin_required` à tout appel d'un membre qui ne possède pas le rôle
-Entra `tenantAdmin`, y compris `authenticateUser` lui-même. Un membre avec
-`tenantAdmin` reste toujours admis, que la configuration soit terminée ou non.
-Une fois l'onboarding termine, `tenantAdmin` cesse d'etre requis pour les
+Entra `TenantAdmin`, y compris `authenticateUser` lui-même. Un membre avec
+`TenantAdmin` reste toujours admis, que la configuration soit terminée ou non.
+Une fois l'onboarding termine, `TenantAdmin` cesse d'etre requis pour les
 membres standards : voir [Authenticate User](../authentification/authenticate-user.md#auth-admission-policy)
 pour la regle complete de derivation du role et de la politique d'admission.
 
-Après l'onboarding, un membre dont le jeton contient `tenantAdmin` retrouve le même écran
+Après l'onboarding, un membre dont le jeton contient `TenantAdmin` retrouve le même écran
 depuis le menu de la SPA pour retirer ou ajouter des contenus. Ce réglage est
 facultatif et ne bloque pas le chat. Le backend continue de refuser les actions
 administratives aux autres membres.

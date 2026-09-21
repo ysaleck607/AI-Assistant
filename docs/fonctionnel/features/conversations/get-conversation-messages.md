@@ -50,11 +50,11 @@ Un membre authentifie peut l'utiliser si :
 - son organisation existe et est active
 - son compte interne existe et est actif
 - son jeton contient `AssistantCore.Access`
-- la configuration Microsoft 365 est terminee, ou son jeton contient aussi `tenantAdmin`
+- la configuration Microsoft 365 est terminee, ou son jeton contient aussi `TenantAdmin`
 - la conversation appartient a ce membre dans l'organisation courante
 
 Tous les membres voient uniquement leurs propres conversations.
-Un `tenantAdmin` ne peut pas lire automatiquement les conversations des
+Un `TenantAdmin` ne peut pas lire automatiquement les conversations des
 autres membres.
 
 Une conversation archivee reste consultable par son proprietaire. Son

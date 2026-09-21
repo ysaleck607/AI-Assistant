@@ -197,7 +197,7 @@ Concretement, il faut :
 - definir son statut initial a `Actif`
 - enregistrer a titre indicatif le role derive de ses app roles Entra au moment de la creation (voir [Politique d'admission](#auth-admission-policy))
 
-Le role enregistre a la creation n'est jamais code en dur : il vient du resolveur de role, qui lit les app roles Entra du token (`AssistantCore.Access` et, le cas echeant, `tenantAdmin`). Cette valeur en base est informative et ne sert pas a autoriser les actions du membre.
+Le role enregistre a la creation n'est jamais code en dur : il vient du resolveur de role, qui lit les app roles Entra du token (`AssistantCore.Access` et, le cas echeant, `TenantAdmin`). Cette valeur en base est informative et ne sert pas a autoriser les actions du membre.
 
 Le point important :
 un utilisateur authentifie peut entrer dans la plateforme meme s'il n'existait pas encore en base, parce que la creation automatique est autorisee.
@@ -231,11 +231,11 @@ Ces permissions ont des responsabilites differentes :
 | `access_as_user` | L'application cliente peut appeler l'API au nom de l'utilisateur connecte |
 | `AssistantCore.Access` | L'utilisateur a ete admis sur la plateforme par son organisation |
 | Role `Admin` ou `User` conserve en base | Information historique ou d'affichage; ne donne aucune autorisation |
-| App role Entra `tenantAdmin` | L'organisation cliente designe ce membre comme administrateur effectif de son espace AssistantCore |
+| App role Entra `TenantAdmin` | L'organisation cliente designe ce membre comme administrateur effectif de son espace AssistantCore |
 
-Le role Entra `AssistantCore.Access` reste uniquement une preuve d'admission : il ne donne jamais `Admin` a lui seul. L'app role Entra `tenantAdmin` (distinct de `AssistantCore.Access`) est la source d'autorite pour les actions d'administration : voir [Politique d'admission](#auth-admission-policy) pour la regle exacte de derivation.
+Le role Entra `AssistantCore.Access` reste uniquement une preuve d'admission : il ne donne jamais `Admin` a lui seul. L'app role Entra `TenantAdmin` (distinct de `AssistantCore.Access`) est la source d'autorite pour les actions d'administration : voir [Politique d'admission](#auth-admission-policy) pour la regle exacte de derivation.
 
-Seul un app role definit sur l'App Registration d'AssistantCore compte pour cette derivation. Un role natif Microsoft comme `Global Administrator` du tenant client n'est jamais utilise pour deduire `tenantAdmin`.
+Seul un app role definit sur l'App Registration d'AssistantCore compte pour cette derivation. Un role natif Microsoft comme `Global Administrator` du tenant client n'est jamais utilise pour deduire `TenantAdmin`.
 
 Le backend doit verifier, dans cet ordre :
 
@@ -262,14 +262,14 @@ Pour le MVP, une organisation doit etre creee et activee dans AssistantCore avan
 
 L'administrateur Microsoft Entra du client decide qui peut entrer dans AssistantCore. Il affecte les utilisateurs ou groupes autorises au role Entra `AssistantCore.Access` de l'Enterprise Application.
 
-Ce meme administrateur Entra du client gere aussi les droits d'administration de la plateforme, via un second app role, `tenantAdmin`, defini sur l'App Registration d'AssistantCore. AssistantCore ne gere pas ces droits depuis la base : le jeton courant est la source d'autorite. Ce choix fait qu'un retrait de `tenantAdmin` prend effet des qu'un nouveau jeton est utilise, sans attendre une synchronisation en base.
+Ce meme administrateur Entra du client gere aussi les droits d'administration de la plateforme, via un second app role, `TenantAdmin`, defini sur l'App Registration d'AssistantCore. AssistantCore ne gere pas ces droits depuis la base : le jeton courant est la source d'autorite. Ce choix fait qu'un retrait de `TenantAdmin` prend effet des qu'un nouveau jeton est utilise, sans attendre une synchronisation en base.
 
 Regle de derivation du role effectif de la session, appliquee a chaque requete autorisee :
 
 - absence de `AssistantCore.Access` dans `roles` -> acces refuse (`403`)
 - `AssistantCore.Access` seul -> role effectif `User`
-- `AssistantCore.Access` et `tenantAdmin` -> role effectif `Admin`
-- `tenantAdmin` sans `AssistantCore.Access` -> acces refuse (`403`), `tenantAdmin` seul ne suffit jamais
+- `AssistantCore.Access` et `TenantAdmin` -> role effectif `Admin`
+- `TenantAdmin` sans `AssistantCore.Access` -> acces refuse (`403`), `TenantAdmin` seul ne suffit jamais
 
 Un utilisateur peut etre provisionne automatiquement seulement si :
 
@@ -291,10 +291,10 @@ A chaque requete, le backend derive de nouveau le role effectif du jeton courant
 
 ### Admission conditionnee a la configuration Microsoft 365
 
-`tenantAdmin` sert a demarrer la configuration Microsoft 365 d'une organisation, pas a rester une autorisation obligatoire pour tous les membres. La regle d'admission generale distingue donc deux periodes :
+`TenantAdmin` sert a demarrer la configuration Microsoft 365 d'une organisation, pas a rester une autorisation obligatoire pour tous les membres. La regle d'admission generale distingue donc deux periodes :
 
-- **Configuration incomplete** (consentement Microsoft 365 non valide ou aucun site selectionne) : `AssistantCore.Access` reste obligatoire pour tous, et `tenantAdmin` est en plus exige. Un membre standard qui ne l'a pas ne peut ni ouvrir le chat ni utiliser les endpoints Microsoft 365 ; le backend retourne `403 Forbidden` avec le code metier `tenant_admin_required`, y compris sur `authenticateUser` lui-meme, pour que le frontend puisse afficher qu'un administrateur doit terminer la configuration.
-- **Configuration terminee** : `AssistantCore.Access` reste obligatoire, mais `tenantAdmin` n'est plus une condition d'admission. Un membre standard accede normalement au SaaS et au chat. Le jeton d'un `tenantAdmin` lui donne toujours les droits d'administration, sans que cela depende du role conserve en base.
+- **Configuration incomplete** (consentement Microsoft 365 non valide ou aucun site selectionne) : `AssistantCore.Access` reste obligatoire pour tous, et `TenantAdmin` est en plus exige. Un membre standard qui ne l'a pas ne peut ni ouvrir le chat ni utiliser les endpoints Microsoft 365 ; le backend retourne `403 Forbidden` avec le code metier `tenant_admin_required`, y compris sur `authenticateUser` lui-meme, pour que le frontend puisse afficher qu'un administrateur doit terminer la configuration.
+- **Configuration terminee** : `AssistantCore.Access` reste obligatoire, mais `TenantAdmin` n'est plus une condition d'admission. Un membre standard accede normalement au SaaS et au chat. Le jeton d'un `TenantAdmin` lui donne toujours les droits d'administration, sans que cela depende du role conserve en base.
 
 Cette regle s'applique a chaque point d'entree qui resout l'organisation et le membre courants (`authenticateUser`, les endpoints Microsoft 365, et les endpoints de messages/conversations), pas seulement dans le frontend. La definition de "configuration terminee" est unique dans tout le systeme : `IsConsentComplete && HasSelectedSite && HasIndexedSource`, la meme que celle exposee par `GET /api/microsoft365/onboarding` (voir [Indexer les documents SharePoint dans Azure AI Search](../microsoft365/index-sharepoint-content.md)). Une ligne de site creee avant un echec de decouverte ne suffit donc pas a ouvrir l'acces aux membres standards.
 
@@ -325,7 +325,7 @@ La désactivation interne utilise
 `PATCH /api/members/{memberId}/status`, décrit dans
 [Gérer le statut d'un membre](../membres/manage-member-status.md).
 
-Retirer uniquement `tenantAdmin` (en laissant `AssistantCore.Access`) ne retire pas l'acces a la plateforme : avec un nouveau jeton, le membre a simplement le role effectif `User`, sans intervention manuelle cote AssistantCore.
+Retirer uniquement `TenantAdmin` (en laissant `AssistantCore.Access`) ne retire pas l'acces a la plateforme : avec un nouveau jeton, le membre a simplement le role effectif `User`, sans intervention manuelle cote AssistantCore.
 
 ---
 
@@ -359,11 +359,11 @@ Dans la meme App Registration, repeter les etapes precedentes pour un second app
 1. cliquer sur `Create app role`
 2. utiliser `AssistantCore Tenant Admin` comme nom affiche
 3. selectionner `Users/Groups` dans les types de membres autorises
-4. utiliser exactement `tenantAdmin` comme valeur
+4. utiliser exactement `TenantAdmin` comme valeur
 5. ajouter une description indiquant que ce role donne les droits d'administration AssistantCore, en plus de l'admission
 6. activer le role puis enregistrer
 
-`tenantAdmin` ne remplace jamais `AssistantCore.Access` : un membre doit toujours avoir les deux pour obtenir le role effectif `Admin` (voir [Politique d'admission](#auth-admission-policy)).
+`TenantAdmin` ne remplace jamais `AssistantCore.Access` : un membre doit toujours avoir les deux pour obtenir le role effectif `Admin` (voir [Politique d'admission](#auth-admission-policy)).
 
 ### B. Verifier le scope delegue
 
@@ -399,7 +399,7 @@ Dans l'Enterprise Application AssistantCore du tenant client :
 4. selectionner le role `AssistantCore.Access`
 5. cliquer sur `Assign`
 6. verifier que chaque affectation apparait avec le bon role
-7. pour les membres qui doivent administrer AssistantCore, repeter l'affectation avec le role `tenantAdmin`, en plus de `AssistantCore.Access`
+7. pour les membres qui doivent administrer AssistantCore, repeter l'affectation avec le role `TenantAdmin`, en plus de `AssistantCore.Access`
 
 Ne pas affecter de service principal ou de groupe dont le périmètre n’est pas
 maîtrisé. Un compte invité doit être affecté individuellement ou par un groupe
@@ -414,9 +414,9 @@ Avec un utilisateur de test affecte :
 3. verifier que `scp` contient `access_as_user`
 4. verifier que `roles` contient `AssistantCore.Access`
 5. appeler `authenticateUser`
-6. verifier que le membre est cree avec un role indicatif `User` si `roles` ne contient pas `tenantAdmin`, ou `Admin` s'il le contient
+6. verifier que le membre est cree avec un role indicatif `User` si `roles` ne contient pas `TenantAdmin`, ou `Admin` s'il le contient
 7. rappeler l'endpoint et verifier qu'aucun doublon n'est cree
-8. affecter ou retirer `tenantAdmin` a cet utilisateur dans le tenant client, obtenir un nouveau jeton, rappeler `authenticateUser` et verifier que les droits effectifs changent sans ecriture du role en base
+8. affecter ou retirer `TenantAdmin` a cet utilisateur dans le tenant client, obtenir un nouveau jeton, rappeler `authenticateUser` et verifier que les droits effectifs changent sans ecriture du role en base
 
 Avec un utilisateur non affecte, verifier que l'acces est refuse et qu'aucun membre interne n'est cree.
 
@@ -609,7 +609,7 @@ A retourner si :
 - l'entreprise est suspendue
 - l'utilisateur est suspendu
 - l'utilisateur ne peut pas etre utilise localement
-- la configuration Microsoft 365 n'est pas terminee et l'utilisateur n'a pas `tenantAdmin` (code metier `tenant_admin_required`)
+- la configuration Microsoft 365 n'est pas terminee et l'utilisateur n'a pas `TenantAdmin` (code metier `tenant_admin_required`)
 
 ### 500 Internal Server Error
 
@@ -622,7 +622,7 @@ A retourner si une erreur technique empeche la construction de la session.
 - le nom fonctionnel de l'endpoint est `authenticateUser`
 - l'utilisateur doit deja etre authentifie avant l'appel
 - le compte utilisateur est cree automatiquement s'il n'existe pas
-- le role effectif est derive des app roles Entra (`AssistantCore.Access` obligatoire, `tenantAdmin` optionnel) et non code en dur
+- le role effectif est derive des app roles Entra (`AssistantCore.Access` obligatoire, `TenantAdmin` optionnel) et non code en dur
 - le role indicatif en base n'est pas utilise pour autoriser et n'est pas resynchronise a chaque authentification
 - seul un app role defini sur l'App Registration d'AssistantCore compte pour cette derivation, jamais un role natif Microsoft comme `Global Administrator`
 - il existe seulement deux roles : `Admin` et `User`

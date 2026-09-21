@@ -54,10 +54,10 @@ jobs:
           echo "LOGIN_SERVER=${LOGIN_SERVER}" >> "$GITHUB_ENV"
           mkdir -p artifacts/sbom
 
-          docker build --file deploy/docker/api.Dockerfile --tag "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}" .
-          docker build --file deploy/docker/bff.Dockerfile --tag "${LOGIN_SERVER}/assistant-bff:${IMAGE_TAG}" .
-          docker build --file deploy/docker/worker.Dockerfile --tag "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}" .
-          docker build --file AssistantCore.Repository/Database/Flyway/Dockerfile --tag "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}" AssistantCore.Repository/Database/Flyway
+          docker build --platform linux/amd64 --provenance=false --file deploy/docker/api.Dockerfile --tag "${LOGIN_SERVER}/assistant-api:${IMAGE_TAG}" .
+          docker build --platform linux/amd64 --provenance=false --file deploy/docker/bff.Dockerfile --tag "${LOGIN_SERVER}/assistant-bff:${IMAGE_TAG}" .
+          docker build --platform linux/amd64 --provenance=false --file deploy/docker/worker.Dockerfile --tag "${LOGIN_SERVER}/assistant-worker:${IMAGE_TAG}" .
+          docker build --platform linux/amd64 --provenance=false --file AssistantCore.Repository/Database/Flyway/Dockerfile --tag "${LOGIN_SERVER}/assistant-migrations:${IMAGE_TAG}" AssistantCore.Repository/Database/Flyway
 
       - name: Scan API image
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0

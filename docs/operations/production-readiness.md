@@ -196,10 +196,13 @@ Le workflow CERTIF ne reconstruit aucune image. Il :
 
 1. vérifie que le tag immuable existe;
 2. vérifie que les images existent dans ACR;
-3. exécute Flyway sur `assistantcore-certif`;
-4. déploie les images par digest;
-5. appelle `/health/live`, `/health/api-ready` et `/bff/session` par Front Door;
-6. vérifie que la SPA répond.
+3. vérifie que le callback de consentement Microsoft 365 est enregistré dans Entra;
+4. synchronise la clé primaire Azure AI Search dans Key Vault avant de créer les révisions;
+5. exécute Flyway sur `assistantcore-certif`;
+6. déploie les images par digest;
+7. vérifie que chaque conteneur de la dernière révision est réellement démarré et prêt;
+8. purge Front Door, puis appelle `/health/live`, `/health/api-ready` et `/bff/session`;
+9. vérifie que la SPA répond.
 
 Le déclenchement manuel constitue la décision de promotion. Une protection
 GitHub Environment peut exiger une approbation supplémentaire si l'équipe le
@@ -255,6 +258,12 @@ dans Git, les fichiers Bicep, les workflows ou les images.
 
 GitHub Actions se connecte à Azure avec OIDC et des jetons temporaires. Aucun
 Client Secret Azure permanent n'est stocké dans GitHub.
+
+L'identité OIDC de déploiement doit pouvoir écrire uniquement le secret
+`azure-search-api-key` de son Key Vault. Cette permission permet au pipeline de
+remplacer la clé lorsque la clé primaire Azure AI Search change. Sans elle,
+l'API peut démarrer mais la recherche Microsoft 365 échoue avec une réponse
+`403` d'Azure AI Search.
 
 <a id="production-deployment-rollback"></a>
 ### Échecs et retour à la version précédente

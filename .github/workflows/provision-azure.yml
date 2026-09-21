@@ -240,6 +240,17 @@ jobs:
               spaImageTag="$SPA_TAG" \
               bffEntraClientId="$BFF_ENTRA_CLIENT_ID"
 
+      - name: Verify Microsoft 365 consent configuration
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        run: deploy/infra/verify-microsoft365-consent-config.sh "${{ inputs.environment_name }}"
+
+      - name: Synchronize Azure AI Search key
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          SHARED_RESOURCE_GROUP: ${{ vars.AZURE_SHARED_RESOURCE_GROUP }}
+        run: deploy/infra/refresh-azure-search-key.sh \
+          "$RESOURCE_GROUP" "${{ inputs.environment_name }}" "$NAME_SUFFIX" "$SHARED_RESOURCE_GROUP"
+
       - name: Deploy final secure topology
         if: ${{ inputs.operation == 'deploy-environment' }}
         env:
@@ -278,7 +289,7 @@ jobs:
       - name: Run database migrations
         if: ${{ inputs.operation == 'deploy-environment' && inputs.run_database_migrations }}
         run: |
-          MIGRATIONS_JOB="caj-assistant-migrations-${{ inputs.environment_name }}-private"
+          MIGRATIONS_JOB="caj-assistant-mig-${{ inputs.environment_name }}-p"
           EXECUTION_NAME="$(az containerapp job start \
             --resource-group "$RESOURCE_GROUP" \
             --name "$MIGRATIONS_JOB" \
@@ -317,8 +328,8 @@ jobs:
       - name: Verify security invariants
         if: ${{ inputs.operation == 'deploy-environment' }}
         run: |
-          API_APP="ca-assistant-api-${{ inputs.environment_name }}-private"
-          CONTAINER_ENV="cae-assistant-${{ inputs.environment_name }}-private"
+          API_APP="ca-assistant-api-${{ inputs.environment_name }}-p"
+          CONTAINER_ENV="cae-assistant-${{ inputs.environment_name }}-p"
           SQL_SERVER="sql-assistant-${{ inputs.environment_name }}-${NAME_SUFFIX}"
 
           api_external="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.configuration.ingress.external -o tsv)"

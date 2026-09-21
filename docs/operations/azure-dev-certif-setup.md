@@ -49,8 +49,10 @@ des dépôts BFF et SPA. Les workflows n’utilisent pas de Client Secret Azure.
 Attribuer à cette identité les droits nécessaires sur `rg-assistant-shared` et
 `rg-assistant-certif` : `Contributor`, `User Access Administrator` pour les
 assignations de rôles Bicep, `AcrPush` sur l’ACR et `Key Vault Secrets User`
-sur le coffre CERTIF. Après le déploiement, les Container Apps utilisent leurs
-propres identités limitées à `AcrPull` et à la lecture Key Vault.
+sur le coffre CERTIF. Ajouter aussi `Key Vault Secrets Officer` limité au secret
+`azure-search-api-key` : le pipeline y synchronise la clé primaire Azure AI
+Search avant chaque déploiement. Après le déploiement, les Container Apps utilisent
+leurs propres identités limitées à `AcrPull` et à la lecture Key Vault.
 
 Dans les paramètres Actions des deux dépôts, créer l’environnement `certif`.
 Il peut exiger un approbateur. Ajouter ces variables dans cet environnement :

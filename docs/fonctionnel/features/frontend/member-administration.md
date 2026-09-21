@@ -15,7 +15,7 @@
 <a id="member-admin-purpose"></a>
 ## But
 
-Donner à un `tenantAdmin` une interface séparée du chat pour consulter les
+Donner à un `TenantAdmin` une interface séparée du chat pour consulter les
 membres, changer leur rôle indicatif et activer ou désactiver leur accès.
 
 <a id="member-admin-route"></a>
@@ -26,7 +26,7 @@ membres, changer leur rôle indicatif et activer ou désactiver leur accès.
 ```
 
 Un guard masque la route lorsque le rôle effectif de la session n'est pas
-`Admin`. Ce rôle effectif vient de `tenantAdmin` dans le jeton. Le backend
+`Admin`. Ce rôle effectif vient de `TenantAdmin` dans le jeton. Le backend
 refait toujours le contrôle; masquer une route n'est pas une autorisation.
 
 <a id="member-admin-api"></a>
@@ -47,7 +47,7 @@ chargement, liste vide et erreur. Le membre connecté est clairement identifié.
 <a id="member-admin-actions"></a>
 ## Actions
 
-1. Le `tenantAdmin` choisit un rôle indicatif ou un statut.
+1. Le `TenantAdmin` choisit un rôle indicatif ou un statut.
 2. Une confirmation explique l'effet d'une désactivation.
 3. Le bouton concerné est bloqué pendant l'appel.
 4. La ligne est remplacée par la réponse du backend.
@@ -107,7 +107,7 @@ n'est placé dans un composant de présentation.
 <a id="member-admin-acceptance"></a>
 ## Critères d'acceptation
 
-- Seul un membre dont le jeton contient `tenantAdmin` accède à la route.
+- Seul un membre dont le jeton contient `TenantAdmin` accède à la route.
 - Le rôle affiché dans le tableau est indicatif et ne change pas les autorisations.
 - La liste et les actions utilisent les contrats backend documentés.
 - Les refus ne laissent jamais un faux rôle ou statut à l'écran.

@@ -14,7 +14,7 @@ var originGroupName = 'spa-bff-origin-group'
 var originName = 'spa-bff-origin'
 var routeName = 'spa-bff-route'
 var customDomainResourceName = replace(customDomainName, '.', '-')
-var wafPolicyName = 'waf-assistant-${environmentName}-${nameSuffix}'
+var wafPolicyName = 'wafassistant${environmentName}${nameSuffix}'
 
 resource profile 'Microsoft.Cdn/profiles@2025-04-15' = {
   name: profileName
@@ -77,7 +77,6 @@ resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2025-04-15' = {
       }
       privateLinkLocation: location
       requestMessage: 'OnPremia Front Door private origin'
-      status: 'Pending'
     }
   }
 }
@@ -138,6 +137,68 @@ resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@20
     customRules: {
       rules: [
         {
+          name: 'AllowMicrosoft365ConsentCallback'
+          priority: 1
+          ruleType: 'MatchRule'
+          action: 'Allow'
+          enabledState: 'Enabled'
+          matchConditions: [
+            {
+              matchVariable: 'RequestUri'
+              operator: 'Contains'
+              matchValue: [
+                '/api/microsoft365/consent/callback'
+              ]
+              negateCondition: false
+            }
+            {
+              matchVariable: 'RequestMethod'
+              operator: 'Equal'
+              matchValue: [
+                'GET'
+              ]
+              negateCondition: false
+            }
+          ]
+        }
+        {
+          name: 'AllowOidcCallback'
+          priority: 5
+          ruleType: 'MatchRule'
+          action: 'Allow'
+          enabledState: 'Enabled'
+          matchConditions: [
+            {
+              matchVariable: 'RequestUri'
+              operator: 'Equal'
+              matchValue: [
+                '/signin-oidc'
+              ]
+              negateCondition: false
+            }
+            {
+              matchVariable: 'RequestMethod'
+              operator: 'Equal'
+              matchValue: [
+                'POST'
+              ]
+              negateCondition: false
+            }
+            {
+              matchVariable: 'RequestHeader'
+              selector: 'Content-Type'
+              operator: 'Contains'
+              matchValue: [
+                'application/x-www-form-urlencoded'
+              ]
+              negateCondition: false
+              transforms: [
+                'Lowercase'
+              ]
+            }
+          ]
+        }
+        {
           name: 'GraphWebhookRateLimit'
           priority: 10
           ruleType: 'RateLimitRule'
@@ -190,10 +251,12 @@ resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@20
     managedRules: {
       managedRuleSets: [
         {
-          ruleSetType: 'DefaultRuleSet'
+          ruleSetAction: 'Block'
+          ruleSetType: 'Microsoft_DefaultRuleSet'
           ruleSetVersion: '2.1'
         }
         {
+          ruleSetAction: 'Block'
           ruleSetType: 'Microsoft_BotManagerRuleSet'
           ruleSetVersion: '1.0'
         }

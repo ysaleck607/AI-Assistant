@@ -8,7 +8,7 @@ param sqlServerName string
 param tags object = {}
 
 var vnetName = 'vnet-assistant-${environmentName}-${nameSuffix}'
-var containerAppsSubnetName = 'snet-containerapps'
+var containerAppsSubnetName = 'snet-containerapps-p'
 var privateEndpointsSubnetName = 'snet-private-endpoints'
 var sqlPrivateEndpointName = 'pe-sql-assistant-${environmentName}-${nameSuffix}'
 var sqlPrivateDnsZoneName = 'privatelink${environment().suffixes.sqlServerHostname}'
@@ -27,7 +27,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-05-01' = {
       {
         name: containerAppsSubnetName
         properties: {
-          addressPrefix: '10.42.0.0/23'
+          addressPrefix: '10.42.4.0/23'
           delegations: [
             {
               name: 'Microsoft.App.environments'
