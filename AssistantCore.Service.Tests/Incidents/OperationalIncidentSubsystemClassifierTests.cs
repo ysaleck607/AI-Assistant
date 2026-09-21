@@ -90,7 +90,7 @@ public sealed class OperationalIncidentSubsystemClassifierTests
         ];
         yield return
         [
-            new RequestRateLimitExceededException(5),
+            new OrganizationCapacityAlertException(100),
             OperationalIncidentSubsystem.Application,
             OperationalIncidentSeverity.Warning
         ];

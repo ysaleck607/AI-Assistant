@@ -47,7 +47,7 @@ public sealed class MessageRateLimitService(
         {
             await incidentReporter.ReportAsync(
                 new OperationalIncidentReport(
-                    new RequestRateLimitExceededException(retryAfterSeconds),
+                    new OrganizationCapacityAlertException(_options.OrganizationMessagesPerMinute),
                     $"rate-limit-{Guid.NewGuid():N}",
                     userContext.Organization.Id,
                     userContext.Member.Id),

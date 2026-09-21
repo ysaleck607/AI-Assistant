@@ -70,7 +70,7 @@ public sealed class MessageRateLimitServiceTests
 
         // Then
         var report = Assert.Single(reporter.ReceivedReports);
-        Assert.IsType<RequestRateLimitExceededException>(report.Exception);
+        Assert.IsType<OrganizationCapacityAlertException>(report.Exception);
         Assert.Equal(userContext.Organization.Id, report.OrganizationId);
         Assert.Equal(userContext.Member.Id, report.OrganizationMemberId);
     }

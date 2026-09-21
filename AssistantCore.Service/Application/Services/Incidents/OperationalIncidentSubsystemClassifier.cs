@@ -10,9 +10,10 @@ namespace AssistantCore.Service.Application.Services.Incidents;
 /// ici : elles ne representent pas une panne de sous-systeme et ne doivent jamais generer
 /// d'incident (voir OperationalIncidentReporter).
 ///
-/// RequestRateLimitExceededException est l'exception a cette regle : elle est mappee
-/// deliberement pour la feature #1 (alerte de capacite), reutilisant l'infrastructure
-/// #15 (incident + digest email) faute d'un vrai concept de quota persistant cote backend.
+/// OrganizationCapacityAlertException est l'exception a cette regle : elle n'est jamais
+/// lancee vers un appelant (voir sa doc), elle existe uniquement pour porter un message
+/// lisible dans un incident #1 (alerte de capacite), qui reutilise l'infrastructure #15
+/// (incident + digest email) faute d'un vrai concept de quota persistant cote backend.
 /// </summary>
 public static class OperationalIncidentSubsystemClassifier
 {
@@ -41,7 +42,7 @@ public static class OperationalIncidentSubsystemClassifier
 
         ExternalSourcesUnavailableException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Error),
 
-        RequestRateLimitExceededException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Warning),
+        OrganizationCapacityAlertException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Warning),
 
         _ => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Critical)
     };
