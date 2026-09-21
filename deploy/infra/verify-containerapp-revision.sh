@@ -45,8 +45,11 @@ for attempt in $(seq 1 24); do
       --output json)"
 
     if jq -e --argjson expected "$EXPECTED_IMAGES_JSON" --argjson actual "$actual_images" '
-      all($expected | to_entries[] as $expectedImage;
-        any($actual[]; .name == $expectedImage.key and .image == $expectedImage.value))
+      ($expected | to_entries) as $expectedEntries
+      | all($expectedEntries[];
+          . as $expectedImage
+          | any($actual[];
+              .name == $expectedImage.key and .image == $expectedImage.value))
     ' >/dev/null; then
       echo "Container App ${APP_NAME} revision ${revision} is ready."
       exit 0
