@@ -4,7 +4,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AssistantCore.Repository.Queries;
 
-public sealed class BackofficeOrganizationQueries(AssistantCoreDbContext dbContext)
+public sealed class BackofficeOrganizationQueries(
+    AssistantCoreDbContext dbContext,
+    IEmailBlindIndexHasher emailHasher)
     : IBackofficeOrganizationQueries
 {
     public async Task<BackofficeOrganizationListPageData> SearchOrganizationsAsync(
@@ -145,6 +147,14 @@ public sealed class BackofficeOrganizationQueries(AssistantCoreDbContext dbConte
 
         var hasOrganizationId = Guid.TryParse(normalizedSearch, out var organizationId);
 
+        // OrganizationMember.Email is encrypted at rest: EF Core cannot translate a
+        // Contains() over it (it tries to encrypt the search term and use the resulting
+        // ciphertext as a LIKE escape character, which SQL Server rejects). The blind-index
+        // hash only supports exact matches, so a search that happens to be a full email
+        // address now matches that admin's organization; a partial email no longer does -
+        // an accepted narrowing versus the previous 500 on every search.
+        var searchEmailHash = emailHasher.ComputeHash(normalizedSearch);
+
         return organizations.Where(organization =>
             organization.Name.Contains(normalizedSearch)
             || (organization.ExternalTenantId != null
@@ -155,7 +165,7 @@ public sealed class BackofficeOrganizationQueries(AssistantCoreDbContext dbConte
                 && connection.TenantId.Contains(normalizedSearch))
             || organization.Members.Any(member =>
                 member.Role == OrganizationRole.Admin
-                && member.Email.Contains(normalizedSearch))
+                && member.EmailLookupHash == searchEmailHash)
             || (hasOrganizationId && organization.Id == organizationId));
     }
 

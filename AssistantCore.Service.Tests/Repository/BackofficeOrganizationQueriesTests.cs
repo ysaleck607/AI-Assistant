@@ -18,7 +18,7 @@ public sealed class BackofficeOrganizationQueriesTests
         await using var dbContext = CreateDbContext(databaseId);
         dbContext.Organizations.AddRange(organization, otherOrganization);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.SearchOrganizationsAsync(
@@ -54,7 +54,7 @@ public sealed class BackofficeOrganizationQueriesTests
         dbContext.Organizations.AddRange(organization, otherOrganization);
         dbContext.OrganizationMembers.AddRange(admin, userWithSameDomain);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.SearchOrganizationsAsync(
@@ -67,6 +67,37 @@ public sealed class BackofficeOrganizationQueriesTests
         var item = Assert.Single(result.Items);
         Assert.Equal(organization.Id, item.Id);
         Assert.Equal(1, result.TotalCount);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_APartialEmailSearch_When_SearchOrganizationsAsync_Then_DoesNotThrowAndFindsNoMatch(
+        Guid databaseId)
+    {
+        // Given : regression - Email est chiffre au repos, un Contains() SQL dessus levait
+        // une SqlException ("invalid escape character") sur toute recherche non vide. La
+        // recherche par email n'accepte plus qu'une correspondance exacte (index aveugle).
+        var organization = CreateOrganization("MetalPro");
+        var admin = CreateMember(
+            organization.Id,
+            "admin@metalpro.test",
+            OrganizationRole.Admin,
+            RecordStatus.Active);
+        await using var dbContext = CreateDbContext(databaseId);
+        dbContext.Organizations.Add(organization);
+        dbContext.OrganizationMembers.Add(admin);
+        await dbContext.SaveChangesAsync();
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
+
+        // When
+        var result = await queries.SearchOrganizationsAsync(
+            1,
+            25,
+            "admin@metal",
+            CancellationToken.None);
+
+        // Then
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
     }
 
     [Theory, AutoDomainData]
@@ -90,7 +121,7 @@ public sealed class BackofficeOrganizationQueriesTests
         dbContext.Organizations.AddRange(organization, otherOrganization);
         dbContext.Microsoft365Connections.Add(connection);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.SearchOrganizationsAsync(
@@ -157,7 +188,7 @@ public sealed class BackofficeOrganizationQueriesTests
         dbContext.Microsoft365Sources.AddRange(site, sharePointDrive, drive);
         dbContext.Microsoft365IndexedContents.Add(content);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.GetOrganizationDetailsAsync(
@@ -204,7 +235,7 @@ public sealed class BackofficeOrganizationQueriesTests
         dbContext.Microsoft365Connections.Add(connection);
         dbContext.Microsoft365Sources.AddRange(site, drive);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.GetOrganizationDetailsAsync(
@@ -241,7 +272,7 @@ public sealed class BackofficeOrganizationQueriesTests
         dbContext.Microsoft365Connections.Add(connection);
         dbContext.Microsoft365Sources.Add(site);
         await dbContext.SaveChangesAsync();
-        var queries = new BackofficeOrganizationQueries(dbContext);
+        var queries = new BackofficeOrganizationQueries(dbContext, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.GetOrganizationDetailsAsync(
@@ -283,6 +314,7 @@ public sealed class BackofficeOrganizationQueriesTests
             OrganizationId = organizationId,
             Name = email,
             Email = email,
+            EmailLookupHash = new StubEmailBlindIndexHasher().ComputeHash(email),
             IdentityProvider = IdentityProvider.MicrosoftEntraId,
             ExternalUserId = Guid.NewGuid().ToString("D"),
             Role = role,
