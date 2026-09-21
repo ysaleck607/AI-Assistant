@@ -3,7 +3,17 @@ set -euo pipefail
 
 RESOURCE_GROUP="${1:?resource group is required}"
 APP_NAME="${2:?container app name is required}"
-EXPECTED_IMAGES_JSON="${3:-{}}"
+EXPECTED_IMAGES_JSON="${3:-}"
+
+if [[ -z "$EXPECTED_IMAGES_JSON" ]]; then
+  EXPECTED_IMAGES_JSON='{}'
+fi
+
+if ! jq -e 'type == "object" and all(to_entries[]; (.key | type == "string") and (.value | type == "string"))' \
+  <<<"$EXPECTED_IMAGES_JSON" >/dev/null; then
+  echo "Expected container images must be a valid JSON object." >&2
+  exit 2
+fi
 
 revision="$(az containerapp show \
   --resource-group "$RESOURCE_GROUP" \
