@@ -6,9 +6,13 @@ namespace AssistantCore.Service.Application.Services.Incidents;
 
 /// <summary>
 /// Associe un type d'exception a un sous-systeme et une severite pour #15. Les exceptions
-/// metier normales (validation, quota, ressource introuvable) ne sont volontairement pas
-/// mappees ici : elles ne representent pas une panne de sous-systeme et ne doivent jamais
-/// generer d'incident (voir OperationalIncidentReporter).
+/// metier normales (validation, ressource introuvable) ne sont volontairement pas mappees
+/// ici : elles ne representent pas une panne de sous-systeme et ne doivent jamais generer
+/// d'incident (voir OperationalIncidentReporter).
+///
+/// RequestRateLimitExceededException est l'exception a cette regle : elle est mappee
+/// deliberement pour la feature #1 (alerte de capacite), reutilisant l'infrastructure
+/// #15 (incident + digest email) faute d'un vrai concept de quota persistant cote backend.
 /// </summary>
 public static class OperationalIncidentSubsystemClassifier
 {
@@ -36,6 +40,8 @@ public static class OperationalIncidentSubsystemClassifier
         AiProviderException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Error),
 
         ExternalSourcesUnavailableException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Error),
+
+        RequestRateLimitExceededException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Warning),
 
         _ => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Critical)
     };

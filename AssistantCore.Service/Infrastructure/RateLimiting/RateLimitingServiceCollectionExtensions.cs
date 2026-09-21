@@ -18,6 +18,7 @@ public static class RateLimitingServiceCollectionExtensions
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<IRateLimitStore, InMemoryRateLimitStore>();
         services.AddSingleton<IOrganizationOrchestrationLeaseStore, InMemoryOrganizationOrchestrationLeaseStore>();
+        services.AddSingleton<IOrganizationCapacityAlertGate, InMemoryOrganizationCapacityAlertGate>();
         services.AddScoped<IOrganizationOrchestrationLimitService, OrganizationOrchestrationLimitService>();
         services.AddSingleton<IValidateOptions<RateLimitingOptions>, OrchestrationRateLimitingOptionsValidator>();
 

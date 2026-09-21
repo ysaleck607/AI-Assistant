@@ -90,6 +90,12 @@ public sealed class OperationalIncidentSubsystemClassifierTests
         ];
         yield return
         [
+            new RequestRateLimitExceededException(5),
+            OperationalIncidentSubsystem.Application,
+            OperationalIncidentSeverity.Warning
+        ];
+        yield return
+        [
             new InvalidOperationException("Unhandled."),
             OperationalIncidentSubsystem.Application,
             OperationalIncidentSeverity.Critical

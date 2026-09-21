@@ -1,6 +1,7 @@
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Messages;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Application.Services.RateLimiting;
 using Microsoft.Extensions.Options;
 
@@ -54,14 +55,56 @@ public sealed class MessageRateLimitServiceTests
         Assert.Equal(2, store.ReceivedRules.Count);
     }
 
-    private static MessageRateLimitService CreateService(IRateLimitStore store) =>
+    [Theory, AutoDomainData]
+    public async Task Given_RateLimitReachedAndAlertGateOpen_When_EnsureAllowedAsync_Then_ReportsACapacityIncident(
+        MessageUserContext userContext)
+    {
+        // Given
+        var store = new StubRateLimitStore(new RateLimitAcquireResult(false, TimeSpan.FromSeconds(5)));
+        var reporter = new RecordingOperationalIncidentReporter();
+        var service = CreateService(store, alertGateResult: true, reporter: reporter);
+
+        // When
+        await Assert.ThrowsAsync<RequestRateLimitExceededException>(() =>
+            service.EnsureAllowedAsync(userContext, CancellationToken.None));
+
+        // Then
+        var report = Assert.Single(reporter.ReceivedReports);
+        Assert.IsType<RequestRateLimitExceededException>(report.Exception);
+        Assert.Equal(userContext.Organization.Id, report.OrganizationId);
+        Assert.Equal(userContext.Member.Id, report.OrganizationMemberId);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_RateLimitReachedButAlertGateClosed_When_EnsureAllowedAsync_Then_DoesNotReportAnIncident(
+        MessageUserContext userContext)
+    {
+        // Given : anti-spam actif - une alerte a deja ete envoyee recemment pour cette organisation.
+        var store = new StubRateLimitStore(new RateLimitAcquireResult(false, TimeSpan.FromSeconds(5)));
+        var reporter = new RecordingOperationalIncidentReporter();
+        var service = CreateService(store, alertGateResult: false, reporter: reporter);
+
+        // When
+        await Assert.ThrowsAsync<RequestRateLimitExceededException>(() =>
+            service.EnsureAllowedAsync(userContext, CancellationToken.None));
+
+        // Then
+        Assert.Empty(reporter.ReceivedReports);
+    }
+
+    private static MessageRateLimitService CreateService(
+        IRateLimitStore store,
+        bool alertGateResult = true,
+        IOperationalIncidentReporter? reporter = null) =>
         new(
             store,
             Options.Create(new RateLimitingOptions
             {
                 MemberMessagesPerMinute = 10,
                 OrganizationMessagesPerMinute = 100
-            }));
+            }),
+            new StubOrganizationCapacityAlertGate(alertGateResult),
+            reporter ?? new RecordingOperationalIncidentReporter());
 
     private sealed class StubRateLimitStore(RateLimitAcquireResult result) : IRateLimitStore
     {
@@ -76,6 +119,22 @@ public sealed class MessageRateLimitServiceTests
             CallCount++;
             ReceivedRules = rules;
             return Task.FromResult(result);
+        }
+    }
+
+    private sealed class StubOrganizationCapacityAlertGate(bool result) : IOrganizationCapacityAlertGate
+    {
+        public bool TryAcquire(Guid organizationId) => result;
+    }
+
+    private sealed class RecordingOperationalIncidentReporter : IOperationalIncidentReporter
+    {
+        public List<OperationalIncidentReport> ReceivedReports { get; } = [];
+
+        public Task ReportAsync(OperationalIncidentReport report, CancellationToken cancellationToken = default)
+        {
+            ReceivedReports.Add(report);
+            return Task.CompletedTask;
         }
     }
 }
