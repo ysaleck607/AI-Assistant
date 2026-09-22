@@ -49,6 +49,7 @@ public sealed class Microsoft365AgenticRetrievalConnectorTests
             entraUserId,
             userEmail) with
         {
+            CurrentUserMessage = query,
             ConversationHistory =
             [
                 new AiConversationMessage(AiConversationRole.User, "combien dois-je payer à Microsoft ?"),
@@ -115,6 +116,46 @@ public sealed class Microsoft365AgenticRetrievalConnectorTests
 
         // Then
         Assert.Single(retrievalClient.ReceivedRequests);
+        Assert.Single(result.Evidence);
+    }
+
+    [Theory, InlineAutoDomainData("nouvelle référence", "nouvelle référence associée au sujet précédent")]
+    public async Task Given_ADifferentCurrentMessageAndContextualizedQuery_When_SearchAsync_Then_RetrievesBothQueriesWithoutDuplicates(
+        string currentUserMessage,
+        string contextualizedQuery,
+        Guid organizationId,
+        Guid memberId,
+        Guid entraUserId,
+        Guid entraGroupId,
+        string userEmail)
+    {
+        // Given
+        var retrievalClient = new RecordingAgenticRetrievalClient(
+            CreateReference("0", "document-reference", "Document", "Document content."));
+        var connector = CreateConnector(
+            entraGroupId,
+            "spg:contoso.sharepoint.com,site-collection-id,web-id:5",
+            retrievalClient);
+        var context = CreateContext(
+            organizationId,
+            memberId,
+            entraUserId,
+            userEmail) with
+        {
+            CurrentUserMessage = currentUserMessage
+        };
+
+        // When
+        var result = await connector.SearchAsync(
+            new SearchMicrosoft365ToolArguments(contextualizedQuery, null, null, null),
+            context,
+            CancellationToken.None);
+
+        // Then
+        Assert.Collection(
+            retrievalClient.ReceivedRequests,
+            request => Assert.Equal(currentUserMessage, request.Query),
+            request => Assert.Equal(contextualizedQuery, request.Query));
         Assert.Single(result.Evidence);
     }
 

@@ -11,4 +11,5 @@ public sealed record ConnectorExecutionContext(
     IdentityProvider? IdentityProvider = null,
     int RetrievalCandidateLimit = int.MaxValue,
     string? UserEmail = null,
-    IReadOnlyCollection<AiConversationMessage>? ConversationHistory = null);
+    IReadOnlyCollection<AiConversationMessage>? ConversationHistory = null,
+    string? CurrentUserMessage = null);

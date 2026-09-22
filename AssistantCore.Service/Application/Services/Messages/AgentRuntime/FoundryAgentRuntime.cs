@@ -192,7 +192,8 @@ public sealed class FoundryAgentRuntime(
         request.ExecutionContext with
         {
             RetrievalCandidateLimit = _options.RetrievalCandidateLimit,
-            ConversationHistory = request.Processing.ConversationHistory
+            ConversationHistory = request.Processing.ConversationHistory,
+            CurrentUserMessage = request.Processing.UserMessage
         };
 
     private static IReadOnlyDictionary<string, AiToolDefinition> CreateAuthorizedToolMappings(

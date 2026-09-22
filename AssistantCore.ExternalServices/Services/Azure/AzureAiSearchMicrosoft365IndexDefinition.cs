@@ -4,13 +4,15 @@ namespace AssistantCore.ExternalServices.Services.Azure;
 
 public static class AzureAiSearchMicrosoft365IndexDefinition
 {
+    public const string SearchableTextAnalyzer = "standardasciifolding.lucene";
+
     public static IReadOnlyCollection<AzureAiSearchIndexFieldDefinition> CreateFields() =>
     [
         new("chunkId", "Edm.String", Key: true, Filterable: true),
         new("organizationId", "Edm.String", Filterable: true, Retrievable: false),
         new("sourceType", "Edm.String", Filterable: true),
-        new("title", "Edm.String", Searchable: true),
-        new("content", "Edm.String", Searchable: true),
+        new("title", "Edm.String", Searchable: true, Analyzer: SearchableTextAnalyzer),
+        new("content", "Edm.String", Searchable: true, Analyzer: SearchableTextAnalyzer),
         new("siteId", "Edm.String", Filterable: true),
         new("driveId", "Edm.String", Filterable: true),
         new("driveItemId", "Edm.String", Filterable: true),

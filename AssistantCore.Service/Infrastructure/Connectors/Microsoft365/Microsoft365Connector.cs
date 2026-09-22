@@ -93,26 +93,76 @@ public sealed class Microsoft365Connector(
         var configuration = searchOptions.Value;
         var filter = Microsoft365SearchFilterBuilder.Build(searchParameters);
         var retrievalStartedAt = TimeProvider.System.GetTimestamp();
-        var result = await agenticRetrievalClient.RetrieveAsync(
-            new AgenticRetrievalRequest(
-                request.Query,
-                [],
-                configuration.KnowledgeBaseName,
-                configuration.KnowledgeSourceName,
-                filter,
-                context.RetrievalCandidateLimit,
-                options.MaximumResults,
-                configuration.KnowledgeBaseMaxRuntimeInSeconds,
-                configuration.KnowledgeBaseMaxOutputSizeInTokens
-                    ?? throw new InvalidOperationException(
-                        "AzureSearch knowledge base output token limit is required.")),
-            cancellationToken);
+        var retrievalQueries = CreateRetrievalQueries(request.Query, context.CurrentUserMessage);
+        var retrievals = await Task.WhenAll(retrievalQueries.Select(query =>
+            agenticRetrievalClient.RetrieveAsync(
+                new AgenticRetrievalRequest(
+                    query,
+                    [],
+                    configuration.KnowledgeBaseName,
+                    configuration.KnowledgeSourceName,
+                    filter,
+                    context.RetrievalCandidateLimit,
+                    options.MaximumResults,
+                    configuration.KnowledgeBaseMaxRuntimeInSeconds,
+                    configuration.KnowledgeBaseMaxOutputSizeInTokens
+                        ?? throw new InvalidOperationException(
+                            "AzureSearch knowledge base output token limit is required.")),
+                cancellationToken)));
+        var references = retrievals
+            .SelectMany(result => result.References)
+            .ToArray();
         logger?.LogInformation(
-            "Microsoft365 knowledge base retrieval completed in {ElapsedMilliseconds} ms with {ReferenceCount} references.",
+            "Microsoft365 knowledge base retrieval completed in {ElapsedMilliseconds} ms with {QueryCount} queries and {ReferenceCount} references.",
             TimeProvider.System.GetElapsedTime(retrievalStartedAt).TotalMilliseconds,
-            result.References.Count);
+            retrievalQueries.Length,
+            references.Length);
 
-        var records = result.References
+        var recordsByRetrieval = retrievals
+            .Select(result => CreateSearchRecords(
+                result.References,
+                configuration.MinimumSemanticRelevanceScore))
+            .ToArray();
+        var records = recordsByRetrieval
+            .SelectMany(retrievalRecords => retrievalRecords)
+            .ToArray();
+
+        logger?.LogInformation(
+            "Microsoft365 knowledge base relevance stage kept {RelevantCount} relevant records from {ReferenceCount} references.",
+            records.Length,
+            references.Length);
+
+        var evidenceByRetrieval = recordsByRetrieval
+            .Select(retrievalRecords => evidenceNormalizer.Normalize(
+                retrievalRecords.Select(MapCandidate).ToArray(),
+                new EvidenceNormalizationOptions(
+                    options.MaximumContentLength,
+                    options.MaximumResults)))
+            .ToArray();
+        var evidence = EvidenceNormalizer.LimitAcrossRetrievals(
+            evidenceByRetrieval,
+            options.MaximumResults);
+
+        LogAgenticRetrieval(
+            retrievals.SelectMany(result => result.Activity).ToArray(),
+            references.Length,
+            records.Length);
+        return new ConnectorResult(evidence);
+    }
+
+    private static string[] CreateRetrievalQueries(
+        string contextualizedQuery,
+        string? currentUserMessage) =>
+        new string?[] { currentUserMessage, contextualizedQuery }
+            .Where(query => !string.IsNullOrWhiteSpace(query))
+            .Select(query => query!.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+    private static Microsoft365SearchRecord[] CreateSearchRecords(
+        IEnumerable<AgenticRetrievalReference> references,
+        double minimumSemanticRelevanceScore) =>
+        references
             .Select(reference => new Microsoft365SearchRecord(
                 "Microsoft365",
                 reference.Title,
@@ -127,23 +177,8 @@ public sealed class Microsoft365Connector(
                 reference.RelevanceScore,
                 reference.ArchivePath))
             .Where(record => record.RelevanceScore is null
-                || record.RelevanceScore >= configuration.MinimumSemanticRelevanceScore)
+                || record.RelevanceScore >= minimumSemanticRelevanceScore)
             .ToArray();
-
-        logger?.LogInformation(
-            "Microsoft365 knowledge base relevance stage kept {RelevantCount} relevant records from {ReferenceCount} references.",
-            records.Length,
-            result.References.Count);
-
-        var evidence = evidenceNormalizer.Normalize(
-            records.Select(MapCandidate).ToArray(),
-            new EvidenceNormalizationOptions(
-                options.MaximumContentLength,
-                options.MaximumResults));
-
-        LogAgenticRetrieval(result.Activity, result.References.Count, records.Length);
-        return new ConnectorResult(evidence);
-    }
 
     private void LogAgenticRetrieval(
         IReadOnlyCollection<AgenticRetrievalActivity> activity,

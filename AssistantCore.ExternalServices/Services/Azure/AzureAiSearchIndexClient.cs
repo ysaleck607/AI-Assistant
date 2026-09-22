@@ -315,6 +315,7 @@ public sealed class AzureAiSearchIndexClient
                 searchable = true,
                 filterable = field.Filterable,
                 retrievable = false,
+                analyzer = (string?)null,
                 dimensions = (int?)dimensions,
                 vectorSearchProfile = (string?)"m365-vector-profile"
             }
@@ -326,6 +327,7 @@ public sealed class AzureAiSearchIndexClient
                 searchable = field.Searchable,
                 filterable = field.Filterable,
                 retrievable = field.Retrievable,
+                analyzer = field.Analyzer,
                 dimensions = (int?)null,
                 vectorSearchProfile = (string?)null
             };
