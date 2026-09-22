@@ -1,5 +1,6 @@
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Backoffice;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.AuthenticateUser;
 using AssistantCore.Service.Application.Services.Conversations;
 using AssistantCore.Service.Application.Services.Conversations.Purge;
@@ -87,7 +88,6 @@ public static class ServiceCollectionExtensions
                 $"{RateLimitingOptions.SectionName} message limits must be greater than zero.")
             .ValidateOnStart();
         services.AddScoped<IMessageRateLimitService, MessageRateLimitService>();
-        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
         services.AddScoped<ISendMessageCommandValidator, SendMessageCommandValidator>();
         services.AddSingleton<IConversationCursorCodec, ConversationCursorCodec>();
         services.AddSingleton<IConversationMessageCursorCodec, ConversationMessageCursorCodec>();
@@ -185,6 +185,8 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<TimeProvider>(TimeProvider.System);
         services.AddSingleton<ISensitiveDataRedactor, SensitiveDataRedactor>();
         services.AddScoped<IOperationalIncidentReporter, OperationalIncidentReporter>();
+        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
+        services.AddScoped<ILlmTokenConsumptionTracker, LlmTokenConsumptionTracker>();
         return services;
     }
 }

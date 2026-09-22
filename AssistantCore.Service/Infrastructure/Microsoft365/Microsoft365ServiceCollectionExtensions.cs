@@ -2,9 +2,13 @@ using AssistantCore.ExternalServices.Services.Microsoft;
 using AssistantCore.ExternalServices.Services.Azure;
 using AssistantCore.ExternalServices.Services.OpenAI;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Services.AzureSearch;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using AssistantCore.Service.Application.Services.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Services.Messages.Tabular;
+using AssistantCore.Service.Infrastructure.AzureSearch;
+using AssistantCore.Service.Infrastructure.LlmQuota;
 using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
 
@@ -162,6 +166,9 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365ArchiveContentExtractor, Microsoft365ArchiveContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365EmbeddingGenerator, Microsoft365EmbeddingGeneratorAdapter>();
         services.AddScoped<IMicrosoft365SearchIndexInitializer, Microsoft365SearchIndexInitializerAdapter>();
+        services.AddScoped<IAzureSearchQuotaChecker, AzureSearchQuotaCheckerAdapter>();
+        services.AddSingleton<IAzureSearchQuotaAlertGate, InMemoryAzureSearchQuotaAlertGate>();
+        services.AddSingleton<ILlmQuotaAlertGate, InMemoryLlmQuotaAlertGate>();
         services.AddSingleton<IMicrosoft365ClientStateProtector, Microsoft365ClientStateProtectorAdapter>();
         services.AddSingleton(serviceProvider =>
         {

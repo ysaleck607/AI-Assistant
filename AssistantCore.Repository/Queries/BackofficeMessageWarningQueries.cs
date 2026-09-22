@@ -37,6 +37,7 @@ public sealed class BackofficeMessageWarningQueries(AssistantCoreDbContext dbCon
                 warning.Message.Conversation.OrganizationId,
                 warning.Message.Conversation.Organization.Name,
                 warning.Content,
+                warning.Message.Content,
                 warning.Message.CreatedAt))
             .ToListAsync(cancellationToken);
 
@@ -74,7 +75,8 @@ public sealed class BackofficeMessageWarningQueries(AssistantCoreDbContext dbCon
                 item.IsContentGap,
                 item.IsContentGap
                     ? questionTextsByMessageId.GetValueOrDefault(item.Candidate.MessageId)
-                    : null))
+                    : null,
+                item.IsContentGap ? item.Candidate.ResponseText : null))
             .ToList();
 
         return new BackofficeMessageWarningListPageData(items, page, pageSize, totalCount);
@@ -165,5 +167,6 @@ public sealed class BackofficeMessageWarningQueries(AssistantCoreDbContext dbCon
         Guid OrganizationId,
         string OrganizationName,
         string Content,
+        string ResponseText,
         DateTimeOffset OccurredAt);
 }

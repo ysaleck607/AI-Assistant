@@ -10,5 +10,6 @@ public enum OperationalIncidentSubsystem
     AzureAiSearch,
     FoundryLlm,
     WorkerJobs,
-    Application
+    Application,
+    ContentQuality
 }

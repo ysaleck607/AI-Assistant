@@ -10,10 +10,11 @@ namespace AssistantCore.Service.Application.Services.Incidents;
 /// ici : elles ne representent pas une panne de sous-systeme et ne doivent jamais generer
 /// d'incident (voir OperationalIncidentReporter).
 ///
-/// OrganizationCapacityAlertException est l'exception a cette regle : elle n'est jamais
-/// lancee vers un appelant (voir sa doc), elle existe uniquement pour porter un message
-/// lisible dans un incident #1 (alerte de capacite), qui reutilise l'infrastructure #15
-/// (incident + digest email) faute d'un vrai concept de quota persistant cote backend.
+/// OrganizationCapacityAlertException, AzureSearchQuotaAlertException,
+/// LlmQuotaAlertException et ContentGapAlertException sont les exceptions a cette regle :
+/// aucune n'est jamais lancee vers un appelant (voir leur doc), elles existent uniquement
+/// pour porter un message lisible dans un incident d'alerte, qui reutilise l'infrastructure
+/// #15 (incident + digest email).
 /// </summary>
 public static class OperationalIncidentSubsystemClassifier
 {
@@ -33,16 +34,20 @@ public static class OperationalIncidentSubsystemClassifier
         Microsoft365ContentExtractionException => (OperationalIncidentSubsystem.SharePoint, OperationalIncidentSeverity.Warning),
 
         AzureAiSearchUnavailableException => (OperationalIncidentSubsystem.AzureAiSearch, OperationalIncidentSeverity.Error),
+        AzureSearchQuotaAlertException => (OperationalIncidentSubsystem.AzureAiSearch, OperationalIncidentSeverity.Warning),
 
         AiProviderTimeoutException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Warning),
         AiProviderLimitException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Warning),
         AiProviderUnavailableException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Error),
         AiProviderInvalidResponseException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Error),
         AiProviderException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Error),
+        LlmQuotaAlertException => (OperationalIncidentSubsystem.FoundryLlm, OperationalIncidentSeverity.Warning),
 
         ExternalSourcesUnavailableException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Error),
 
         OrganizationCapacityAlertException => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Warning),
+
+        ContentGapAlertException => (OperationalIncidentSubsystem.ContentQuality, OperationalIncidentSeverity.Warning),
 
         _ => (OperationalIncidentSubsystem.Application, OperationalIncidentSeverity.Critical)
     };

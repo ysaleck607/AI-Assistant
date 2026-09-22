@@ -183,6 +183,42 @@ public sealed class BackofficeMessageWarningQueriesTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_ContentGapWarning_When_SearchAsync_Then_ResponseTextIsTheModelsAnswer(
+        Guid databaseId)
+    {
+        // Given : requis par Giovani - l'alerte de lacune de contenu doit exposer la
+        // reponse du modele en plus de la question posee.
+        var organization = CreateOrganization("MetalPro");
+        var conversation = CreateConversation(organization.Id);
+        var userMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:00Z"),
+            MessageRole.User,
+            "Quel est le processus de remboursement ?");
+        var assistantMessage = CreateMessage(
+            conversation.Id,
+            DateTimeOffset.Parse("2026-09-15T10:00:05Z"),
+            content: "Je n'ai pas trouve d'information a ce sujet.");
+        await using var dbContext = CreateDbContext(databaseId);
+        dbContext.Organizations.Add(organization);
+        dbContext.Conversations.Add(conversation);
+        dbContext.Messages.AddRange(userMessage, assistantMessage);
+        dbContext.MessageWarnings.Add(
+            CreateWarning(
+                assistantMessage.Id,
+                $"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvee pour repondre a cette question."));
+        await dbContext.SaveChangesAsync();
+        var queries = new BackofficeMessageWarningQueries(dbContext);
+
+        // When
+        var result = await queries.SearchAsync(organization.Id, null, null, true, 1, 25);
+
+        // Then
+        var item = Assert.Single(result.Items);
+        Assert.Equal("Je n'ai pas trouve d'information a ce sujet.", item.ResponseText);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_RegularWarning_When_SearchAsync_Then_QuestionTextIsNeverPopulated(
         Guid databaseId)
     {
@@ -213,6 +249,7 @@ public sealed class BackofficeMessageWarningQueriesTests
         var item = Assert.Single(result.Items);
         Assert.False(item.IsContentGap);
         Assert.Null(item.QuestionText);
+        Assert.Null(item.ResponseText);
     }
 
     private static AssistantCoreDbContext CreateDbContext(Guid databaseId)

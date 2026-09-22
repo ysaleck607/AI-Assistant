@@ -72,6 +72,22 @@ public static class WorkerProgram
                 $"{OperationalIncidentDigestOptions.SectionName} requires a positive interval and a recipient address when enabled.")
             .ValidateOnStart();
 
+        builder.Services.AddOptions<AzureSearchQuotaAlertOptions>()
+            .Bind(builder.Configuration.GetSection(AzureSearchQuotaAlertOptions.SectionName))
+            .Validate(
+                options => options.IntervalMinutes > 0
+                    && options.ThresholdRatio is > 0 and <= 1,
+                $"{AzureSearchQuotaAlertOptions.SectionName} requires a positive interval and a threshold ratio between 0 and 1.")
+            .ValidateOnStart();
+
+        builder.Services.AddOptions<LlmQuotaAlertOptions>()
+            .Bind(builder.Configuration.GetSection(LlmQuotaAlertOptions.SectionName))
+            .Validate(
+                options => options.IntervalMinutes > 0
+                    && options.ThresholdRatio is > 0 and <= 1,
+                $"{LlmQuotaAlertOptions.SectionName} requires a positive interval and a threshold ratio between 0 and 1.")
+            .ValidateOnStart();
+
         builder.Services.AddSingleton<IEmailSender, SmtpEmailSender>();
 
         builder.Services.AddMicrosoft365WorkerApplication();
@@ -81,6 +97,8 @@ public static class WorkerProgram
         builder.Services.AddHostedService<Microsoft365IngestionWorker>();
         builder.Services.AddHostedService<ConversationPurgeWorker>();
         builder.Services.AddHostedService<OperationalIncidentDigestWorker>();
+        builder.Services.AddHostedService<AzureSearchQuotaAlertWorker>();
+        builder.Services.AddHostedService<LlmQuotaAlertWorker>();
 
         await builder.Build().RunAsync();
     }

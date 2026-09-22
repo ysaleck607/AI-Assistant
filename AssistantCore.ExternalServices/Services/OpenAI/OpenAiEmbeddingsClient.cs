@@ -6,7 +6,7 @@ namespace AssistantCore.ExternalServices.Services.OpenAI;
 
 public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
 {
-    public async Task<IReadOnlyList<IReadOnlyList<float>>> CreateAsync(
+    public async Task<OpenAiEmbeddingBatchResult> CreateAsync(
         string endpoint,
         string apiKey,
         string model,
@@ -62,13 +62,17 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
             throw new OpenAiExternalException(-1);
         }
 
-        return vectors;
+        return new OpenAiEmbeddingBatchResult(vectors, payload.Usage?.TotalTokens ?? 0);
     }
 
     private sealed record EmbeddingResponse(
-        [property: JsonPropertyName("data")] IReadOnlyCollection<EmbeddingItem> Data);
+        [property: JsonPropertyName("data")] IReadOnlyCollection<EmbeddingItem> Data,
+        [property: JsonPropertyName("usage")] EmbeddingUsage? Usage);
 
     private sealed record EmbeddingItem(
         [property: JsonPropertyName("index")] int Index,
         [property: JsonPropertyName("embedding")] IReadOnlyList<float> Embedding);
+
+    private sealed record EmbeddingUsage(
+        [property: JsonPropertyName("total_tokens")] int TotalTokens);
 }

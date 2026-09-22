@@ -79,6 +79,8 @@ public class AssistantCoreDbContext(
 
     public DbSet<OperationalIncident> OperationalIncidents => Set<OperationalIncident>();
 
+    public DbSet<LlmTokenConsumption> LlmTokenConsumptions => Set<LlmTokenConsumption>();
+
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         optionsBuilder.ReplaceService<IModelCacheKeyFactory, EncryptionAwareModelCacheKeyFactory>();

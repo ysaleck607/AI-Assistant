@@ -159,6 +159,7 @@ déjà calculées.
 | Microsoft365IndexedPassage | toutes : `Id`, `Microsoft365IndexedContentId`, `ChunkId` |
 | Microsoft365List | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId`, `ListId`, `SchemaFingerprint`, `RequiresItemReprocessing` |
 | Microsoft365ListItemWork | `Id`, `OrganizationId`, `Microsoft365SourceId`, `Microsoft365SynchronizationId`, `SiteId`, `ListId`, `ListItemId`, `ETag`, `CreatedDateTime`, `LastModifiedDateTime`, `DeduplicationKey`, `WorkType`, `CreatedAt` |
+| LlmTokenConsumption | toutes : `Id`, `Model`, `PeriodStart`, `TokensConsumed`, `UpdatedAt` — compteur agrege global (aucune donnee client ou personnelle) |
 | Microsoft365ReindexOperation | `Id`, `OrganizationId`, `Microsoft365ConnectionId`, `RequestedByOperatorId`, `SourceCount`, `CompletedSourceCount`, `DiscoveredDocumentCount`, `ProcessedDocumentCount`, `IgnoredDocumentCount`, `FailedDocumentCount`, `RequestedAt`, `StartedAt`, `CompletedAt`, `LastErrorCode` |
 | OperationalIncident | `Id`, `OccurredAt`, `Subsystem`, `Severity`, `CorrelationId`, `OrganizationId`, `OrganizationMemberId`, `RelatedResourceType`, `RelatedResourceId`, `Status`, `ResolvedAt` |
 | Microsoft365Site | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId` |

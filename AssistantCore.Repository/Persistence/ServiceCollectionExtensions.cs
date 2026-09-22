@@ -53,6 +53,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IOperationalIncidentQueries, OperationalIncidentQueries>();
         services.AddScoped<IBackofficeMessageWarningQueries, BackofficeMessageWarningQueries>();
         services.AddScoped<IBackofficeAuditQueries, BackofficeAuditQueries>();
+        services.AddScoped<ILlmTokenConsumptionRepository, LlmTokenConsumptionRepository>();
 
         return services;
     }

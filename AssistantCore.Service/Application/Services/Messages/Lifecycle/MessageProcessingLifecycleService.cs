@@ -1,6 +1,8 @@
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Repositories;
+using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Conversations;
 using AssistantCore.Service.Application.Models.Messages;
@@ -8,12 +10,20 @@ using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.AiModels;
 using AssistantCore.Service.Application.Models.Messages.Lifecycle;
 using AssistantCore.Service.Application.Services.Conversations;
+using AssistantCore.Service.Application.Services.Incidents;
+using AssistantCore.Service.Application.Services.LlmQuota;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Application.Services.Messages.Lifecycle;
 
 public sealed class MessageProcessingLifecycleService(
     IConversationRepository conversationRepository,
-    TimeProvider timeProvider) : IMessageProcessingLifecycleService
+    ILlmTokenConsumptionTracker tokenConsumptionTracker,
+    IOperationalIncidentReporter incidentReporter,
+    IOptions<AzureAiSearchOptions> searchOptions,
+    TimeProvider timeProvider,
+    ILogger<MessageProcessingLifecycleService> logger) : IMessageProcessingLifecycleService
 {
     private const int MaximumProcessingErrorCodeLength = 100;
 
@@ -182,9 +192,70 @@ public sealed class MessageProcessingLifecycleService(
                 cancellationToken)
             ?? throw CreateConversationNotFoundException();
 
+        await RecordTokenConsumptionAsync(result.Usage, cancellationToken);
+        await ReportContentGapAlertIfNeededAsync(processing, result, cancellationToken);
+
         return new CompletedMessageProcessing(
             completedMessage.Id,
             completedMessage.CreatedAt);
+    }
+
+    // Le suivi de quota (#1) ne doit jamais faire echouer une reponse de chat deja
+    // rendue a l'utilisateur : toute panne est avalee et loggee, jamais relancee.
+    private async Task RecordTokenConsumptionAsync(
+        AgentTurnUsage usage,
+        CancellationToken cancellationToken)
+    {
+        var totalTokens = usage.InputTokens + usage.OutputTokens;
+        if (totalTokens <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await tokenConsumptionTracker.RecordConsumptionAsync(
+                searchOptions.Value.PlanningModelName,
+                totalTokens,
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to record LLM token consumption for this message.");
+        }
+    }
+
+    // Alerte de contenu manquant (#3, demande explicite de Giovani) : la reponse
+    // deja rendue a l'utilisateur ne doit jamais echouer a cause d'une panne d'alerte.
+    private async Task ReportContentGapAlertIfNeededAsync(
+        StartedMessageProcessing processing,
+        AgentTurnResult result,
+        CancellationToken cancellationToken)
+    {
+        var hasContentGap = result.Warnings.Any(warning =>
+            warning.StartsWith(MessageWarningMarkers.NoEvidenceFoundPrefix, StringComparison.Ordinal));
+
+        if (!hasContentGap)
+        {
+            return;
+        }
+
+        try
+        {
+            await incidentReporter.ReportAsync(
+                new OperationalIncidentReport(
+                    new ContentGapAlertException(processing.UserMessage, result.Content),
+                    $"content-gap-{Guid.NewGuid():N}",
+                    processing.OrganizationId,
+                    processing.OwnerMemberId,
+                    RelatedResourceType: "Conversation",
+                    RelatedResourceId: processing.ConversationId),
+                cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to report a content-gap alert for this message.");
+        }
     }
 
     public async Task FailAsync(

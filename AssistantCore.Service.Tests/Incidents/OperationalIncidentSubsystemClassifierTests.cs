@@ -60,6 +60,24 @@ public sealed class OperationalIncidentSubsystemClassifierTests
         ];
         yield return
         [
+            new AzureSearchQuotaAlertException(0.84, 44_215_502, 52_428_800),
+            OperationalIncidentSubsystem.AzureAiSearch,
+            OperationalIncidentSeverity.Warning
+        ];
+        yield return
+        [
+            new LlmQuotaAlertException("gpt-5.5", 0.71, 710_000, 1_000_000),
+            OperationalIncidentSubsystem.FoundryLlm,
+            OperationalIncidentSeverity.Warning
+        ];
+        yield return
+        [
+            new ContentGapAlertException("Quelle est la politique de retour ?", "Je n'ai pas trouve d'information."),
+            OperationalIncidentSubsystem.ContentQuality,
+            OperationalIncidentSeverity.Warning
+        ];
+        yield return
+        [
             new AiProviderTimeoutException("Foundry"),
             OperationalIncidentSubsystem.FoundryLlm,
             OperationalIncidentSeverity.Warning

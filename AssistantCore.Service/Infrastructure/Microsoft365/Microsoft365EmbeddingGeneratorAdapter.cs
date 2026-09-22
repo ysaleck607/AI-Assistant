@@ -1,14 +1,18 @@
 using AssistantCore.ExternalServices.Services.OpenAI;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Exceptions;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.Microsoft365;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Infrastructure.Microsoft365;
 
 public sealed class Microsoft365EmbeddingGeneratorAdapter(
     OpenAiEmbeddingsClient client,
-    IOptions<Microsoft365Options> options) : IMicrosoft365EmbeddingGenerator
+    IOptions<Microsoft365Options> options,
+    ILlmTokenConsumptionTracker tokenConsumptionTracker,
+    ILogger<Microsoft365EmbeddingGeneratorAdapter> logger) : IMicrosoft365EmbeddingGenerator
 {
     private const int MaximumTransientAttempts = 6;
     private static readonly SemaphoreSlim EmbeddingGate = new(1, 1);
@@ -32,14 +36,19 @@ public sealed class Microsoft365EmbeddingGeneratorAdapter(
         try
         {
             var vectors = new List<IReadOnlyList<float>>(contents.Count);
+            var totalTokens = 0;
             foreach (var batch in contents.Chunk(configuration.EmbeddingBatchSize))
             {
-                vectors.AddRange(await CreateBatchWithRetryAsync(
+                var result = await CreateBatchWithRetryAsync(
                     client,
                     configuration,
                     batch,
-                    cancellationToken));
+                    cancellationToken);
+                vectors.AddRange(result.Vectors);
+                totalTokens += result.TotalTokens;
             }
+
+            await RecordTokenConsumptionAsync(configuration.EmbeddingModel, totalTokens, cancellationToken);
 
             return vectors;
         }
@@ -49,7 +58,29 @@ public sealed class Microsoft365EmbeddingGeneratorAdapter(
         }
     }
 
-    private static async Task<IReadOnlyList<IReadOnlyList<float>>> CreateBatchWithRetryAsync(
+    // Le suivi de quota (#1) ne doit jamais faire echouer l'indexation : toute panne
+    // est avalee et loggee, jamais relancee.
+    private async Task RecordTokenConsumptionAsync(
+        string model,
+        int totalTokens,
+        CancellationToken cancellationToken)
+    {
+        if (totalTokens <= 0)
+        {
+            return;
+        }
+
+        try
+        {
+            await tokenConsumptionTracker.RecordConsumptionAsync(model, totalTokens, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Failed to record LLM token consumption for embedding generation.");
+        }
+    }
+
+    private static async Task<OpenAiEmbeddingBatchResult> CreateBatchWithRetryAsync(
         OpenAiEmbeddingsClient client,
         Microsoft365Options configuration,
         string[] batch,

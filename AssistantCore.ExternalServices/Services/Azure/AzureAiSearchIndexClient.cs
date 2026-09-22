@@ -162,6 +162,36 @@ public sealed class AzureAiSearchIndexClient
         }
     }
 
+    /// <summary>
+    /// Reads the search SERVICE's own storage counters (shared across every index on
+    /// it, not just the one this app uses) - the real Azure-side quota, distinct from
+    /// anything this application tracks itself.
+    /// </summary>
+    public async Task<AzureAiSearchServiceStatistics> GetServiceStatisticsAsync(
+        string endpoint,
+        string? apiKey,
+        CancellationToken cancellationToken = default)
+    {
+        var uri = new Uri(new Uri(endpoint), $"/servicestats?api-version={ApiVersion}");
+        using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+        await AuthorizeAsync(request, apiKey, cancellationToken);
+        using var response = await httpClient.SendAsync(request, cancellationToken);
+        if (!response.IsSuccessStatusCode)
+        {
+            var errorBody = await response.Content.ReadAsStringAsync(cancellationToken);
+            throw new AzureAiSearchExternalException(
+                $"Azure AI Search service statistics request failed with status {(int)response.StatusCode}: {errorBody}");
+        }
+
+        using var document = await JsonDocument.ParseAsync(
+            await response.Content.ReadAsStreamAsync(cancellationToken),
+            cancellationToken: cancellationToken);
+        var storage = document.RootElement.GetProperty("counters").GetProperty("storageSize");
+        return new AzureAiSearchServiceStatistics(
+            storage.GetProperty("usage").GetInt64(),
+            storage.GetProperty("quota").GetInt64());
+    }
+
     private async Task EnsureKnowledgeSourceCreatedAsync(
         string endpoint,
         string indexName,

@@ -9,4 +9,5 @@ public sealed record BackofficeMessageWarningSummaryData(
     string Content,
     DateTimeOffset OccurredAt,
     bool IsContentGap,
-    string? QuestionText);
+    string? QuestionText,
+    string? ResponseText);
