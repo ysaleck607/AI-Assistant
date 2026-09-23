@@ -1,6 +1,7 @@
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Repositories;
 using AssistantCore.Service.Application.Models.Microsoft365;
+using AssistantCore.Service.Application.Models.Microsoft365.ContentExtraction;
 using AssistantCore.Service.Application.Models.Microsoft365.Permissions;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using Microsoft.Extensions.Options;
@@ -9,6 +10,56 @@ namespace AssistantCore.Service.Tests.Microsoft365;
 
 public sealed class Microsoft365OutlookMessageIndexingServiceTests
 {
+    [Theory, AutoDomainData]
+    public async Task Given_AnOutlookMessageWithATextAttachment_When_IndexAsync_Then_IndexesTheAttachmentContent(
+        Guid organizationId,
+        Guid sourceId,
+        string mailboxUserId,
+        string messageId)
+    {
+        // Given
+        var organization = new Organization { Id = organizationId, Name = "Contoso" };
+        var indexWriter = new RecordingPassageIndexWriter();
+        var service = new Microsoft365OutlookMessageIndexingService(
+            new StubIdentityNormalizer("user:normalized"),
+            new StubEmbeddingGenerator(),
+            new Microsoft365DocumentChunkingService(
+                Options.Create(new AssistantCore.Service.Application.Configuration.Microsoft365Options())),
+            indexWriter,
+            new RecordingAclSynchronizationService(),
+            new EmptyIndexedContentRepository(),
+            new StubAttachmentClient(
+                [new Microsoft365OutlookFileAttachment(
+                    "attachment-id",
+                    "budget.txt",
+                    "text/plain",
+                    "attachment budget content"u8.ToArray(),
+                    false)]),
+            new StubExtractionService("attachment budget content"));
+        var message = new Microsoft365OutlookMessageDelta(
+            messageId,
+            "Budget",
+            "Message body",
+            null,
+            null,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            IsDeleted: false);
+
+        // When
+        await service.IndexAsync(
+            organization,
+            sourceId,
+            "tenant-id",
+            mailboxUserId,
+            message);
+
+        // Then
+        Assert.Contains(indexWriter.Passages, passage =>
+            passage.Content.Contains("Piece jointe: budget.txt", StringComparison.Ordinal)
+            && passage.Content.Contains("attachment budget content", StringComparison.Ordinal));
+    }
+
     [Theory, AutoDomainData]
     public async Task Given_ALongOutlookMessage_When_IndexAsync_Then_CreatesMultipleEmbeddedPassages(
         Guid organizationId,
@@ -154,6 +205,34 @@ public sealed class Microsoft365OutlookMessageIndexingServiceTests
             return Task.FromResult<IReadOnlyList<IReadOnlyList<float>>>(
                 contents.Select(_ => (IReadOnlyList<float>)[0.1f, 0.2f]).ToArray());
         }
+    }
+
+    private sealed class StubAttachmentClient(
+        IReadOnlyCollection<Microsoft365OutlookFileAttachment> attachments)
+        : IMicrosoft365OutlookAttachmentClient
+    {
+        public Task<IReadOnlyCollection<Microsoft365OutlookFileAttachment>> GetFileAttachmentsAsync(
+            string tenantId,
+            string mailboxUserId,
+            string messageId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(attachments);
+    }
+
+    private sealed class StubExtractionService(string text) : IMicrosoft365ContentExtractionService
+    {
+        public Task<Microsoft365ContentExtractionResult> ExtractAsync(
+            Microsoft365ContentExtractionRequest request,
+            CancellationToken cancellationToken) =>
+            Task.FromResult(
+                new Microsoft365ContentExtractionResult(
+                    Microsoft365ContentExtractionStatus.Success,
+                    [new Microsoft365ExtractedContentUnit(
+                        Microsoft365ExtractedContentUnitKind.Paragraph,
+                        0,
+                        text,
+                        request.FileName)],
+                    []));
     }
 
     private sealed class RecordingPassageIndexWriter : IMicrosoft365PassageIndexWriter

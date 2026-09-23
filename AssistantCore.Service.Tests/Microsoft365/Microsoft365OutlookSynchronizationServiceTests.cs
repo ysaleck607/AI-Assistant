@@ -297,17 +297,18 @@ public sealed class Microsoft365OutlookSynchronizationServiceTests
 
     private sealed class RecordingIndexingService : IMicrosoft365OutlookMessageIndexingService
     {
-        public List<(Guid OrganizationId, Guid SourceId, string MailboxUserId, Microsoft365OutlookMessageDelta Message)> IndexedMessages { get; } = [];
+        public List<(Guid OrganizationId, Guid SourceId, string TenantId, string MailboxUserId, Microsoft365OutlookMessageDelta Message)> IndexedMessages { get; } = [];
         public List<string> DeletedMessageIds { get; } = [];
 
         public Task IndexAsync(
             Organization organization,
             Guid sourceId,
+            string tenantId,
             string mailboxUserId,
             Microsoft365OutlookMessageDelta message,
             CancellationToken cancellationToken = default)
         {
-            IndexedMessages.Add((organization.Id, sourceId, mailboxUserId, message));
+            IndexedMessages.Add((organization.Id, sourceId, tenantId, mailboxUserId, message));
             return Task.CompletedTask;
         }
 

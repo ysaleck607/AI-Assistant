@@ -7,6 +7,7 @@ using AssistantCore.Service.Application.Models.Messages.Connectors;
 using AssistantCore.Service.Application.Models.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Models.Messages.Evidence;
 using AssistantCore.Service.Application.Models.Messages.Tools.Arguments;
+using AssistantCore.Service.Application.Models.Microsoft365.ContentExtraction;
 using AssistantCore.Service.Application.Services.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Services.Messages.Evidence;
 using AssistantCore.Service.Application.Services.Microsoft365;
@@ -17,6 +18,8 @@ namespace AssistantCore.Service.Infrastructure.Connectors.Microsoft365;
 public sealed class Microsoft365OutlookMailboxQueryAdapter(
     IMicrosoft365ApplicationTokenClient tokenClient,
     MicrosoftGraphOutlookMailboxQueryClient graphClient,
+    MicrosoftGraphOutlookAttachmentClient attachmentClient,
+    IMicrosoft365ContentExtractionService extractionService,
     IOptions<Microsoft365Options> microsoft365Options,
     Microsoft365ConnectorOptions connectorOptions,
     IEvidenceNormalizer evidenceNormalizer) : IMicrosoft365OutlookMailboxQuery
@@ -49,8 +52,16 @@ public sealed class Microsoft365OutlookMailboxQueryAdapter(
                 request.Limit,
                 cancellationToken);
 
+            var messagesWithAttachments = request.IncludeBody
+                ? await EnrichMessagesWithAttachmentsAsync(
+                    messages,
+                    microsoft365Options.Value.GraphBaseUrl,
+                    accessToken,
+                    context.EntraUserId!.Value.ToString("D"),
+                    cancellationToken)
+                : messages;
             var evidence = evidenceNormalizer.Normalize(
-                messages.Select(message => new EvidenceCandidate(
+                messagesWithAttachments.Select(message => new EvidenceCandidate(
                     "Microsoft365",
                     $"Courriel : {message.Subject}",
                     CreateEvidenceContent(message),
@@ -71,6 +82,57 @@ public sealed class Microsoft365OutlookMailboxQueryAdapter(
                 "The Outlook mailbox could not be queried.",
                 exception);
         }
+    }
+
+    private async Task<IReadOnlyCollection<AssistantCore.ExternalServices.Entities.Microsoft.MicrosoftOutlookMailboxMessage>> EnrichMessagesWithAttachmentsAsync(
+        IReadOnlyCollection<AssistantCore.ExternalServices.Entities.Microsoft.MicrosoftOutlookMailboxMessage> messages,
+        string graphBaseUrl,
+        string accessToken,
+        string mailboxUserId,
+        CancellationToken cancellationToken)
+    {
+        var enriched = new List<AssistantCore.ExternalServices.Entities.Microsoft.MicrosoftOutlookMailboxMessage>(messages.Count);
+        foreach (var message in messages)
+        {
+            var attachments = await attachmentClient.GetFileAttachmentsAsync(
+                graphBaseUrl,
+                accessToken,
+                mailboxUserId,
+                message.Id,
+                microsoft365Options.Value.MaximumExtractionFileSizeBytes,
+                cancellationToken);
+            var parts = new List<string>();
+            if (!string.IsNullOrWhiteSpace(message.BodyContent))
+            {
+                parts.Add(message.BodyContent.Trim());
+            }
+
+            foreach (var attachment in attachments)
+            {
+                await using var stream = new MemoryStream(attachment.Content, writable: false);
+                var extraction = await extractionService.ExtractAsync(
+                    new Microsoft365ContentExtractionRequest(
+                        attachment.Name,
+                        attachment.ContentType,
+                        stream,
+                        attachment.Content.Length),
+                    cancellationToken);
+                if (extraction.Status == Microsoft365ContentExtractionStatus.Success
+                    && !string.IsNullOrWhiteSpace(extraction.Text))
+                {
+                    parts.Add($"Piece jointe: {attachment.Name}\n{extraction.Text.Trim()}");
+                }
+            }
+
+            enriched.Add(message with
+            {
+                BodyContent = parts.Count == 0
+                    ? message.BodyContent
+                    : string.Join(Environment.NewLine + Environment.NewLine, parts)
+            });
+        }
+
+        return enriched;
     }
 
     private static string CreateEvidenceContent(

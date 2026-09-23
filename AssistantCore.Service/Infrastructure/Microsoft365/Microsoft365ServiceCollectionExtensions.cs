@@ -111,6 +111,7 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddHttpClient<MicrosoftGraphDriveItemDeltaClient>();
         services.AddHttpClient<MicrosoftGraphOutlookMessageDeltaClient>();
         services.AddHttpClient<MicrosoftGraphOutlookMailboxQueryClient>();
+        services.AddHttpClient<MicrosoftGraphOutlookAttachmentClient>();
         services.AddHttpClient<MicrosoftGraphMailFolderClient>();
         services.AddHttpClient<MicrosoftGraphSharedDriveItemSearchClient>();
         AddProtectedHttpClient<MicrosoftGraphDriveContentClient>(services);
@@ -144,6 +145,7 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365ListItemDeltaClient, Microsoft365ListItemDeltaClientAdapter>();
         services.AddScoped<IMicrosoft365DriveItemDeltaClient, Microsoft365DriveItemDeltaClientAdapter>();
         services.AddScoped<IMicrosoft365OutlookMessageDeltaClient, Microsoft365OutlookMessageDeltaClientAdapter>();
+        services.AddScoped<IMicrosoft365OutlookAttachmentClient, Microsoft365OutlookAttachmentClientAdapter>();
         services.AddScoped<IMicrosoft365CurrentUserOutlookFoldersClient, Microsoft365CurrentUserOutlookFoldersClientAdapter>();
         services.AddScoped<IMicrosoft365DriveContentClient, Microsoft365DriveContentClientAdapter>();
         services.AddScoped<ISpreadsheetWorkbookReader, SpreadsheetWorkbookReaderAdapter>();

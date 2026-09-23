@@ -8,6 +8,7 @@ public interface IMicrosoft365OutlookMessageIndexingService
     Task IndexAsync(
         Organization organization,
         Guid sourceId,
+        string tenantId,
         string mailboxUserId,
         Microsoft365OutlookMessageDelta message,
         CancellationToken cancellationToken = default);

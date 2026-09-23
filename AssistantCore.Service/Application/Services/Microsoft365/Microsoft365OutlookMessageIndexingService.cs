@@ -3,6 +3,7 @@ using System.Text;
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Repositories;
 using AssistantCore.Service.Application.Models.Microsoft365;
+using AssistantCore.Service.Application.Models.Microsoft365.ContentExtraction;
 using AssistantCore.Service.Application.Models.Microsoft365.Permissions;
 
 namespace AssistantCore.Service.Application.Services.Microsoft365;
@@ -13,12 +14,23 @@ public sealed class Microsoft365OutlookMessageIndexingService(
     IMicrosoft365DocumentChunkingService chunkingService,
     IMicrosoft365PassageIndexWriter indexWriter,
     IMicrosoft365ContentAclSynchronizationService aclSynchronizationService,
-    IMicrosoft365IndexedContentRepository indexedContentRepository)
+    IMicrosoft365IndexedContentRepository indexedContentRepository,
+    IMicrosoft365OutlookAttachmentClient? attachmentClient = null,
+    IMicrosoft365ContentExtractionService? extractionService = null)
     : IMicrosoft365OutlookMessageIndexingService
 {
+    public Task IndexAsync(
+        Organization organization,
+        Guid sourceId,
+        string mailboxUserId,
+        Microsoft365OutlookMessageDelta message,
+        CancellationToken cancellationToken = default) =>
+        IndexAsync(organization, sourceId, string.Empty, mailboxUserId, message, cancellationToken);
+
     public async Task IndexAsync(
         Organization organization,
         Guid sourceId,
+        string tenantId,
         string mailboxUserId,
         Microsoft365OutlookMessageDelta message,
         CancellationToken cancellationToken = default)
@@ -30,7 +42,45 @@ public sealed class Microsoft365OutlookMessageIndexingService(
             throw new ArgumentException("Organization and source identifiers are required.");
         }
 
-        if (message.IsDeleted || string.IsNullOrWhiteSpace(message.BodyContent))
+        if (message.IsDeleted)
+        {
+            await DeleteAsync(organization.Id, sourceId, message.Id, cancellationToken);
+            return;
+        }
+
+        var contentParts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(message.BodyContent))
+        {
+            contentParts.Add(message.BodyContent.Trim());
+        }
+
+        IReadOnlyCollection<Microsoft365OutlookFileAttachment> attachments = attachmentClient is null || extractionService is null
+            ? []
+            : await attachmentClient.GetFileAttachmentsAsync(
+                tenantId,
+                mailboxUserId,
+                message.Id,
+                cancellationToken);
+        foreach (var attachment in attachments)
+        {
+            await using var attachmentStream = new MemoryStream(attachment.Content, writable: false);
+            var extraction = await extractionService!.ExtractAsync(
+                new Microsoft365ContentExtractionRequest(
+                    attachment.Name,
+                    attachment.ContentType,
+                    attachmentStream,
+                    attachment.Content.Length),
+                cancellationToken);
+            if (extraction.Status != Microsoft365ContentExtractionStatus.Success
+                || string.IsNullOrWhiteSpace(extraction.Text))
+            {
+                continue;
+            }
+
+            contentParts.Add($"Piece jointe: {attachment.Name}\n{extraction.Text.Trim()}");
+        }
+
+        if (contentParts.Count == 0)
         {
             await DeleteAsync(organization.Id, sourceId, message.Id, cancellationToken);
             return;
@@ -45,7 +95,7 @@ public sealed class Microsoft365OutlookMessageIndexingService(
             hasOrganizationLink: false,
             Microsoft365AclInheritance.Unique);
 
-        var content = message.BodyContent.Trim();
+        var content = string.Join(Environment.NewLine + Environment.NewLine, contentParts);
         var documentVersion = message.LastModifiedDateTime?.ToString("O")
             ?? message.ReceivedDateTime?.ToString("O")
             ?? "unknown";

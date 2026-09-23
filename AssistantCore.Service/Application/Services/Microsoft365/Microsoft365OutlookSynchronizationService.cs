@@ -247,6 +247,7 @@ public sealed class Microsoft365OutlookSynchronizationService(
                 await indexingService.IndexAsync(
                     organization,
                     lease.Source.Id,
+                    lease.Source.Microsoft365Connection.TenantId!,
                     lease.Source.ExternalResourceId,
                     message,
                     cancellationToken);
