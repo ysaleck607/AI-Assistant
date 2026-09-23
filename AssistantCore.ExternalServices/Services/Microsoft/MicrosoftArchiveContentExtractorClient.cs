@@ -117,7 +117,12 @@ public sealed class MicrosoftArchiveContentExtractorClient
                         return new(MicrosoftArchiveExtractionStatus.TooLarge, entries, warnings);
                     }
                     expandedSize += extracted.Length;
-                    entries.Add(new(path, Path.GetFileName(path), extracted.ToArray(), GetMimeType(path)));
+                    var mimeType = GetMimeType(path);
+                    entries.Add(new(
+                        path,
+                        Path.GetFileName(path),
+                        RemoveUtf8Bom(extracted.ToArray(), mimeType),
+                        mimeType));
                 }
                 catch (InvalidDataException)
                 {
@@ -167,9 +172,14 @@ public sealed class MicrosoftArchiveContentExtractorClient
             }
 
             var name = Path.GetFileNameWithoutExtension(fileName);
+            var mimeType = GetMimeType(name);
             return new(
                 MicrosoftArchiveExtractionStatus.Success,
-                [new MicrosoftArchiveEntry(name, name, output.ToArray(), GetMimeType(name))],
+                [new MicrosoftArchiveEntry(
+                    name,
+                    name,
+                    RemoveUtf8Bom(output.ToArray(), mimeType),
+                    mimeType)],
                 []);
         }
         catch (InvalidDataException)
@@ -228,6 +238,20 @@ public sealed class MicrosoftArchiveContentExtractorClient
         ".csv" => "text/csv",
         _ => null
     };
+
+    private static byte[] RemoveUtf8Bom(byte[] content, string? mimeType)
+    {
+        if (mimeType is not ("text/plain" or "text/csv")
+            || content.Length < 3
+            || content[0] != 0xEF
+            || content[1] != 0xBB
+            || content[2] != 0xBF)
+        {
+            return content;
+        }
+
+        return content[3..];
+    }
 
     private static MicrosoftArchiveExtractionResult TooLarge() => new(MicrosoftArchiveExtractionStatus.TooLarge, [], []);
     private static MicrosoftArchiveExtractionResult Corrupted() => new(MicrosoftArchiveExtractionStatus.CorruptedArchive, [], []);
