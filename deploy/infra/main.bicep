@@ -18,6 +18,9 @@ param backendImageTag string
 @description('Immutable SPA image tag, normally sha-<Git commit SHA>.')
 param spaImageTag string
 
+@description('Immutable management frontend image tag, normally sha-<Git commit SHA>.')
+param managementImageTag string
+
 param sqlAdministratorLogin string = 'assistantadmin'
 param sqlDatabaseName string = 'AssistantCoreDb'
 param azureAdTenantId string = 'organizations'
@@ -88,6 +91,7 @@ var containerEnvironmentName = 'cae-assistant-${environmentName}-${topologySuffi
 var apiAppName = 'ca-assistant-api-${environmentName}-${topologySuffix}'
 var workerAppName = 'ca-assistant-worker-${environmentName}-${topologySuffix}'
 var spaAppName = 'ca-assistant-spa-${environmentName}-${topologySuffix}'
+var managementAppName = 'ca-assistant-management-${environmentName}-${topologySuffix}'
 var migrationsJobName = 'caj-assistant-mig-${environmentName}-${topologySuffix}'
 var apiIdentityName = 'id-assistant-api-${environmentName}'
 var workerIdentityName = 'id-assistant-worker-${environmentName}'
@@ -97,6 +101,7 @@ var acrPullIdentityName = 'id-assistant-acr-${environmentName}'
 var dataProtectionKeysContainerName = 'dataprotection-keys'
 var publicDomain = 'assistant-${environmentName}.onpremia.ca'
 var publicOrigin = 'https://${publicDomain}'
+var managementDomain = 'management-${environmentName}.onpremia.ca'
 var foundryProjectEndpoint = 'https://${foundryAccountName}.services.ai.azure.com/api/projects/${foundryProjectName}'
 var keyVaultBaseUrl = 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/secrets'
 var dataProtectionBlobUri = '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
@@ -569,8 +574,8 @@ resource api 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: environmentName == 'prod' ? 2 : 1
-        maxReplicas: environmentName == 'prod' ? 5 : 1
+        minReplicas: 1
+        maxReplicas: 1
       }
     }
   }
@@ -627,7 +632,7 @@ resource worker 'Microsoft.App/containerApps@2025-01-01' = {
       ]
       scale: {
         minReplicas: 1
-        maxReplicas: environmentName == 'prod' ? 3 : 1
+        maxReplicas: 1
       }
     }
   }
@@ -796,8 +801,8 @@ resource spa 'Microsoft.App/containerApps@2025-01-01' = {
         }
       ]
       scale: {
-        minReplicas: environmentName == 'prod' ? 2 : 1
-        maxReplicas: environmentName == 'prod' ? 5 : 1
+        minReplicas: 1
+        maxReplicas: 1
       }
     }
   }
@@ -897,6 +902,75 @@ resource migrationsJob 'Microsoft.App/jobs@2025-01-01' = {
   ]
 }
 
+resource management 'Microsoft.App/containerApps@2025-01-01' = {
+  name: managementAppName
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${acrPullIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: containerEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: true
+        allowInsecure: false
+        targetPort: 8080
+        transport: 'auto'
+      }
+      registries: registryConfiguration
+    }
+    template: {
+      containers: [
+        {
+          name: 'management'
+          image: '${acrLoginServer}/assistant-management:${managementImageTag}'
+          env: [
+            {
+              name: 'MANAGEMENT_API_UPSTREAM'
+              value: internalApiBaseUrl
+            }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          probes: [
+            {
+              type: 'Startup'
+              httpGet: {
+                path: '/health/live'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              periodSeconds: 5
+              failureThreshold: 24
+            }
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health/live'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+}
+
 module frontDoor './modules/front-door.bicep' = {
   name: 'front-door-${environmentName}'
   params: {
@@ -904,8 +978,10 @@ module frontDoor './modules/front-door.bicep' = {
     environmentName: environmentName
     nameSuffix: nameSuffix
     originHostName: spa.properties.configuration.ingress.fqdn
+    managementOriginHostName: management.properties.configuration.ingress.fqdn
     privateLinkResourceId: containerEnvironment.id
     customDomainName: publicDomain
+    managementCustomDomainName: managementDomain
     tags: tags
   }
 }
@@ -913,6 +989,7 @@ module frontDoor './modules/front-door.bicep' = {
 output apiName string = api.name
 output apiInternalUrl string = internalApiBaseUrl
 output spaName string = spa.name
+output managementName string = management.name
 output publicUrl string = publicOrigin
 output workerName string = worker.name
 output migrationsJobName string = migrationsJob.name

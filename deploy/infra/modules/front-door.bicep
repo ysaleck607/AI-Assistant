@@ -4,8 +4,10 @@ param location string
 param environmentName string
 param nameSuffix string
 param originHostName string
+param managementOriginHostName string
 param privateLinkResourceId string
 param customDomainName string
+param managementCustomDomainName string
 param tags object = {}
 
 var profileName = 'afd-assistant-${environmentName}-${nameSuffix}'
@@ -13,7 +15,11 @@ var endpointName = 'assistant-${environmentName}-${nameSuffix}'
 var originGroupName = 'spa-bff-origin-group'
 var originName = 'spa-bff-origin'
 var routeName = 'spa-bff-route'
+var managementOriginGroupName = 'management-origin-group'
+var managementOriginName = 'management-origin'
+var managementRouteName = 'management-route'
 var customDomainResourceName = replace(customDomainName, '.', '-')
+var managementCustomDomainResourceName = replace(managementCustomDomainName, '.', '-')
 var wafPolicyName = 'wafassistant${environmentName}${nameSuffix}'
 
 resource profile 'Microsoft.Cdn/profiles@2025-04-15' = {
@@ -81,11 +87,66 @@ resource origin 'Microsoft.Cdn/profiles/originGroups/origins@2025-04-15' = {
   }
 }
 
+resource managementOriginGroup 'Microsoft.Cdn/profiles/originGroups@2025-04-15' = {
+  parent: profile
+  name: managementOriginGroupName
+  properties: {
+    healthProbeSettings: {
+      probeIntervalInSeconds: 60
+      probePath: '/health/live'
+      probeProtocol: 'Https'
+      probeRequestType: 'GET'
+    }
+    loadBalancingSettings: {
+      additionalLatencyInMilliseconds: 50
+      sampleSize: 4
+      successfulSamplesRequired: 3
+    }
+    sessionAffinityState: 'Disabled'
+  }
+}
+
+resource managementOrigin 'Microsoft.Cdn/profiles/originGroups/origins@2025-04-15' = {
+  parent: managementOriginGroup
+  name: managementOriginName
+  properties: {
+    enabledState: 'Enabled'
+    enforceCertificateNameCheck: true
+    hostName: managementOriginHostName
+    httpPort: 80
+    httpsPort: 443
+    originHostHeader: managementOriginHostName
+    priority: 1
+    weight: 1000
+    sharedPrivateLinkResource: {
+      groupId: 'managedEnvironments'
+      privateLink: {
+        id: privateLinkResourceId
+      }
+      privateLinkLocation: location
+      requestMessage: 'OnPremia Front Door private management origin'
+    }
+  }
+}
+
 resource customDomain 'Microsoft.Cdn/profiles/customDomains@2025-04-15' = {
   parent: profile
   name: customDomainResourceName
   properties: {
     hostName: customDomainName
+    tlsSettings: {
+      certificateType: 'ManagedCertificate'
+      minimumTlsVersion: 'TLS12'
+      cipherSuiteSetType: 'TLS12_2023'
+    }
+  }
+}
+
+resource managementCustomDomain 'Microsoft.Cdn/profiles/customDomains@2025-04-15' = {
+  parent: profile
+  name: managementCustomDomainResourceName
+  properties: {
+    hostName: managementCustomDomainName
     tlsSettings: {
       certificateType: 'ManagedCertificate'
       minimumTlsVersion: 'TLS12'
@@ -119,6 +180,33 @@ resource route 'Microsoft.Cdn/profiles/afdEndpoints/routes@2025-04-15' = {
     ]
   }
   dependsOn: [origin]
+}
+
+resource managementRoute 'Microsoft.Cdn/profiles/afdEndpoints/routes@2025-04-15' = {
+  parent: endpoint
+  name: managementRouteName
+  properties: {
+    customDomains: [
+      {
+        id: managementCustomDomain.id
+      }
+    ]
+    enabledState: 'Enabled'
+    forwardingProtocol: 'HttpsOnly'
+    httpsRedirect: 'Enabled'
+    linkToDefaultDomain: 'Disabled'
+    originGroup: {
+      id: managementOriginGroup.id
+    }
+    patternsToMatch: [
+      '/*'
+    ]
+    supportedProtocols: [
+      'Http'
+      'Https'
+    ]
+  }
+  dependsOn: [managementOrigin]
 }
 
 resource wafPolicy 'Microsoft.Network/FrontDoorWebApplicationFirewallPolicies@2025-03-01' = {
@@ -279,6 +367,9 @@ resource securityPolicy 'Microsoft.Cdn/profiles/securityPolicies@2025-04-15' = {
           domains: [
             {
               id: customDomain.id
+            }
+            {
+              id: managementCustomDomain.id
             }
           ]
           patternsToMatch: [

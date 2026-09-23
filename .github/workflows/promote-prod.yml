@@ -187,7 +187,7 @@ jobs:
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name api \
             --image "$API_IMAGE" \
-            --min-replicas 2
+            --min-replicas 1
           az containerapp update \
             --name ca-assistant-worker-prod-p \
             --resource-group "$PROD_RESOURCE_GROUP" \
@@ -199,13 +199,13 @@ jobs:
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name spa \
             --image "$SPA_IMAGE" \
-            --min-replicas 2
+            --min-replicas 1
           az containerapp update \
             --name ca-assistant-spa-prod-p \
             --resource-group "$PROD_RESOURCE_GROUP" \
             --container-name bff \
             --image "$BFF_IMAGE" \
-            --min-replicas 2
+            --min-replicas 1
 
       - name: Verify deployed PROD revisions
         run: |

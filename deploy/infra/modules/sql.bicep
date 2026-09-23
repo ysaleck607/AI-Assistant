@@ -43,11 +43,11 @@ resource database 'Microsoft.Sql/servers/databases@2023-08-01' = {
     name: 'GP_S_Gen5'
     tier: 'GeneralPurpose'
     family: 'Gen5'
-    capacity: 2
+    capacity: 1
   }
   properties: {
     autoPauseDelay: productionWorkload ? -1 : 60
-    minCapacity: productionWorkload ? json('1') : json('0.5')
+    minCapacity: json('0.5')
     maxSizeBytes: 34359738368
     requestedBackupStorageRedundancy: productionWorkload ? 'Geo' : 'Local'
     useFreeLimit: !productionWorkload
