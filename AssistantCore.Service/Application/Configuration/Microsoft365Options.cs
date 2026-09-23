@@ -70,7 +70,7 @@ public sealed class Microsoft365Options
 
     public long MaximumArchiveExpandedSizeBytes { get; init; } = 200 * 1024 * 1024;
 
-    public int MaximumArchiveEntries { get; init; } = 1_000;
+    public int MaximumArchiveEntries { get; init; } = 1000;
 
     public int MaximumArchiveDepth { get; init; } = 2;
 

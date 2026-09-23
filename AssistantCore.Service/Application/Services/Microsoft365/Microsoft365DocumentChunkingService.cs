@@ -125,12 +125,26 @@ public sealed class Microsoft365DocumentChunkingService(IOptions<Microsoft365Opt
         string sourceType,
         int maximumChunks)
     {
+        var chunks = new List<Microsoft365SearchPassage>();
+        foreach (var group in units.GroupBy(unit => unit.ArchivePath ?? string.Empty))
+        {
+            chunks.AddRange(CreateChunksForUnits(
+                organizationId, sourceId, siteId, driveId, driveItemId, documentVersion,
+                title, url, modifiedAt, group.OrderBy(unit => unit.Order).ToArray(), group.Key, chunks.Count));
+        }
+        return chunks;
+    }
+
+    private IReadOnlyList<Microsoft365SearchPassage> CreateChunksForUnits(
+        Guid organizationId, Guid sourceId, string siteId, string driveId, string driveItemId,
+        string documentVersion, string title, string? url, DateTimeOffset? modifiedAt,
+        IReadOnlyCollection<Microsoft365ExtractedContentUnit> orderedUnits, string archivePath, int chunkOffset)
+    {
         var maximumCharacters = checked(options.Value.ChunkMaximumTokens * 4);
         var overlapCharacters = checked(options.Value.ChunkOverlapTokens * 4);
         var text = string.Join(Environment.NewLine, orderedUnits.Select(unit => unit.Text));
         var sectionPositions = FindSectionPositions(orderedUnits);
         if (string.IsNullOrWhiteSpace(text)) return [];
-
         var chunks = new List<Microsoft365SearchPassage>();
         var position = 0;
         while (position < text.Length && chunks.Count < maximumChunks)
@@ -166,7 +180,6 @@ public sealed class Microsoft365DocumentChunkingService(IOptions<Microsoft365Opt
                     chunkNumber,
                     url,
                     modifiedAt,
-                    SourceType: sourceType,
                     ArchivePath: string.IsNullOrEmpty(archivePath) ? null : archivePath));
             }
 
