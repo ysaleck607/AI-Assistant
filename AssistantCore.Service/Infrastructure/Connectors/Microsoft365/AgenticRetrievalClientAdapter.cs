@@ -58,6 +58,11 @@ public sealed class AgenticRetrievalClientAdapter(
         }
         catch (AzureAiSearchExternalException exception)
         {
+            logger?.LogError(
+                exception,
+                "Azure AI Search knowledge retrieval failed for knowledge base {KnowledgeBaseName} and source {KnowledgeSourceName}.",
+                request.KnowledgeBaseName,
+                request.KnowledgeSourceName);
             throw new Microsoft365ExternalException(
                 "Microsoft 365 agentic retrieval failed.",
                 exception);

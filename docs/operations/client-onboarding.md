@@ -73,7 +73,7 @@ du tenant Microsoft Entra qui a authentifié l'utilisateur.
 Vérifier que l'App Registration AssistantCore expose au minimum les app roles :
 
 - `AssistantCore.Access`, qui autorise l'entrée dans la plateforme;
-- `tenantAdmin`, qui donne les droits d'administration de la plateforme et
+- `TenantAdmin`, qui donne les droits d'administration de la plateforme et
   permet de terminer la configuration Microsoft 365.
 
 L'Enterprise Application correspondante doit être présente dans le tenant du
@@ -88,6 +88,7 @@ Envoyer :
 ```http
 POST /api/organizations
 Content-Type: application/json
+Authorization: Bearer <jeton ManagementAdmin>
 
 {
   "domain": "contoso.com"
@@ -98,10 +99,10 @@ Cette opération est idempotente. Si l'organisation active existe déjà pour ce
 domaine, le backend retourne la même organisation au lieu d'exiger une
 suppression ou une correction manuelle en base.
 
-Tant que le backoffice onPremia n'est pas disponible, cet endpoint est
-temporairement accessible sans authentification. Il ne doit pas être exposé sur
-un réseau public. Une politique d'autorisation réservée au backoffice devra être
-ajoutée avant son exposition.
+Cet endpoint est protégé par la policy `ManagementAdmin` depuis que le
+backoffice onPremia l'expose (page Organisations, action « Créer une
+organisation »). Un jeton d'opérateur Synaptix est désormais requis pour
+l'appeler, y compris manuellement via Postman.
 
 L'organisation peut être créée avant ou après l'affectation des utilisateurs
 et des rôles dans Microsoft Entra. Aucun membre interne n'est requis à cette
@@ -126,7 +127,7 @@ Dans **Microsoft Entra ID > Enterprise applications > AssistantCore > Users
 and groups**, le client affecte :
 
 - `AssistantCore.Access` à tous les utilisateurs ou groupes autorisés;
-- `tenantAdmin` au premier administrateur, en plus de
+- `TenantAdmin` au premier administrateur, en plus de
   `AssistantCore.Access`.
 
 L'ordre entre cette affectation et la création de l'organisation n'est pas
@@ -135,7 +136,7 @@ changent dès que l'utilisateur obtient un nouveau jeton. Le rôle indicatif en
 base n'est pas resynchronisé.
 
 Un rôle natif Microsoft comme `Global Administrator` ne remplace pas
-`tenantAdmin`. Il peut permettre d'accorder le consentement Microsoft, mais il
+`TenantAdmin`. Il peut permettre d'accorder le consentement Microsoft, mais il
 ne donne pas automatiquement les droits d'administration dans AssistantCore.
 
 ### 2. Ouvrir AssistantCore avec le premier administrateur
@@ -148,7 +149,7 @@ Le jeton doit contenir :
 - le tenant client dans `tid`;
 - l'utilisateur dans `oid`;
 - `AssistantCore.Access`;
-- `tenantAdmin`.
+- `TenantAdmin`.
 
 <a id="client-onboarding-first-login"></a>
 ## Premier accès et création du membre
@@ -248,7 +249,7 @@ permissions Microsoft 365 restent appliquées.
 | --- | --- | --- |
 | L'utilisateur a ses rôles, mais l'organisation manque | Synaptix crée l'organisation | L'utilisateur se reconnecte |
 | L'organisation existe déjà | Aucune suppression | Relancer la création ou continuer |
-| `tenantAdmin` a été ajouté après le premier accès | Attendre un nouveau jeton Entra | Déconnexion puis reconnexion |
+| `TenantAdmin` a été ajouté après le premier accès | Attendre un nouveau jeton Entra | Déconnexion puis reconnexion |
 | Le consentement a été refusé ou a expiré | Corriger les permissions | Redémarrer le consentement |
 | Le site existe, mais aucune source n'est active | Corriger l'accès Graph | Sélectionner de nouveau le même site |
 | Une synchronisation est en échec permanent | Corriger la cause externe | Réactiver ou resélectionner la source |

@@ -13,4 +13,6 @@ public sealed class Microsoft365WorkerOptions
     public int MaximumSynchronizationsPerCycle { get; init; } = 10;
 
     public int MaximumDocumentsPerCycle { get; init; } = 100;
+
+    public int MaximumListItemsPerCycle { get; init; } = 100;
 }

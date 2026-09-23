@@ -1,4 +1,5 @@
 using AssistantCore.Repository.Domain.Entities;
+using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Models.Microsoft365;
 
 namespace AssistantCore.Service.Application.Services.Microsoft365;
@@ -30,6 +31,14 @@ internal static class Microsoft365SynchronizationWorkFactory
                 drive.SiteId,
                 ListId: null,
                 drive.DriveId),
+            Microsoft365Source source when source.Kind == Microsoft365SourceKind.OutlookMailbox =>
+                new Microsoft365SynchronizationWork(
+                    synchronization.Id,
+                    "SynchronizeOutlook",
+                    subscription.MicrosoftSubscriptionId,
+                    SiteId: null,
+                    ListId: null,
+                    DriveId: null),
             _ => null
         };
     }

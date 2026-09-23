@@ -6,7 +6,7 @@ namespace AssistantCore.Service.Infrastructure.Connectors.Microsoft365;
 internal static class Microsoft365SearchFilterBuilder
 {
     private static readonly IReadOnlySet<string> SupportedSourceTypes =
-        new HashSet<string>(["sharepoint", "onedrive"], StringComparer.OrdinalIgnoreCase);
+        new HashSet<string>(["sharepoint", "onedrive", "outlook"], StringComparer.OrdinalIgnoreCase);
 
     public static string Build(Microsoft365SearchParameters parameters)
     {

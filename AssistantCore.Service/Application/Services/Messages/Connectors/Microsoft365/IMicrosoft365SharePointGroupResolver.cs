@@ -5,6 +5,6 @@ public interface IMicrosoft365SharePointGroupResolver
     Task<IReadOnlyCollection<string>> ResolveGroupIdsAsync(
         Guid organizationId,
         string externalTenantId,
-        string userEmail,
+        string entraUserId,
         CancellationToken cancellationToken);
 }

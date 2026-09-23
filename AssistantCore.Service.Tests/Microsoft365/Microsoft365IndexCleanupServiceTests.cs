@@ -90,7 +90,7 @@ public sealed class Microsoft365IndexCleanupServiceTests
 
         public Task MergeOrUploadAsync(Guid organizationId, IReadOnlyCollection<Microsoft365SearchPassage> passages, Microsoft365Acl acl, CancellationToken cancellationToken = default) => Task.CompletedTask;
 
-        public Task DeleteAsync(IReadOnlyCollection<string> chunkIds, CancellationToken cancellationToken = default)
+        public Task DeleteAsync(Guid organizationId, IReadOnlyCollection<string> chunkIds, CancellationToken cancellationToken = default)
         {
             DeletedChunkIds = chunkIds;
             return Task.CompletedTask;

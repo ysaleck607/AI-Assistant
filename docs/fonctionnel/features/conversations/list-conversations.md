@@ -48,10 +48,10 @@ Un membre authentifie peut l'utiliser si :
 - son organisation existe et est active
 - son compte interne existe et est actif
 - son jeton contient `AssistantCore.Access`
-- la configuration Microsoft 365 est terminee, ou son jeton contient aussi `tenantAdmin`
+- la configuration Microsoft 365 est terminee, ou son jeton contient aussi `TenantAdmin`
 
 Tous les membres voient uniquement leurs propres conversations.
-Un `tenantAdmin` ne voit pas automatiquement les conversations des autres
+Un `TenantAdmin` ne voit pas automatiquement les conversations des autres
 membres.
 
 ## Donnees envoyees par le frontend

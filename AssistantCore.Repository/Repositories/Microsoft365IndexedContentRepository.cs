@@ -28,16 +28,20 @@ public sealed class Microsoft365IndexedContentRepository(AssistantCoreDbContext 
         ArgumentOutOfRangeException.ThrowIfEqual(organizationId, Guid.Empty);
         ArgumentException.ThrowIfNullOrWhiteSpace(title);
 
-        return await dbContext.Microsoft365IndexedContents
+        // Title is encrypted at rest with a non-deterministic cipher, so an exact match cannot
+        // be pushed down to SQL (the same plaintext never produces the same ciphertext twice).
+        // The organization/availability filters keep the candidate set scoped to one tenant
+        // before the title comparison happens in memory, after decryption.
+        var candidates = await dbContext.Microsoft365IndexedContents
             .AsNoTracking()
             .Include(content => content.Microsoft365Source)
             .Include(content => content.Passages)
-            .Where(content =>
-                content.OrganizationId == organizationId
-                && content.IsAvailable
-                && content.Title != null
-                && content.Title == title)
+            .Where(content => content.OrganizationId == organizationId && content.IsAvailable)
             .ToArrayAsync(cancellationToken);
+
+        return candidates
+            .Where(content => content.Title == title)
+            .ToArray();
     }
 
     public async Task<IReadOnlyCollection<Microsoft365IndexedContent>> GetAclReconciliationCandidatesAsync(

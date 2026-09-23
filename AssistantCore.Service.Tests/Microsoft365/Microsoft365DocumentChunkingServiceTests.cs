@@ -120,13 +120,58 @@ public sealed class Microsoft365DocumentChunkingServiceTests
             Assert.StartsWith("Section: Accès au bâtiment", passage.Content, StringComparison.Ordinal));
     }
 
+    [Theory, AutoDomainData]
+    public void Given_ArchiveGroupsExceedingTheDocumentLimit_When_CreateChunks_Then_ThrowsInvalidDataException(
+        Guid organizationId,
+        Guid sourceId,
+        string siteId,
+        string driveId,
+        string itemId,
+        string version,
+        string title)
+    {
+        // Given
+        var service = CreateService(maximumTokens: 5, overlapTokens: 0, maximumChunksPerDocument: 2);
+        var units = new[]
+        {
+            new Microsoft365ExtractedContentUnit(
+                Microsoft365ExtractedContentUnitKind.Paragraph,
+                0,
+                new string('a', 30),
+                "first/document.xml"),
+            new Microsoft365ExtractedContentUnit(
+                Microsoft365ExtractedContentUnitKind.Paragraph,
+                1,
+                new string('b', 30),
+                "second/document.xml")
+        };
+
+        // When
+        var action = () => service.CreateChunks(
+            organizationId,
+            sourceId,
+            siteId,
+            driveId,
+            itemId,
+            version,
+            title,
+            null,
+            null,
+            units);
+
+        // Then
+        var exception = Assert.Throws<InvalidDataException>(action);
+        Assert.Contains("2 passages", exception.Message, StringComparison.Ordinal);
+    }
+
     private static Microsoft365DocumentChunkingService CreateService(
         int maximumTokens,
-        int overlapTokens) =>
+        int overlapTokens,
+        int maximumChunksPerDocument = 100) =>
         new(Options.Create(new Microsoft365Options
         {
             ChunkMaximumTokens = maximumTokens,
             ChunkOverlapTokens = overlapTokens,
-            MaximumChunksPerDocument = 100
+            MaximumChunksPerDocument = maximumChunksPerDocument
         }));
 }

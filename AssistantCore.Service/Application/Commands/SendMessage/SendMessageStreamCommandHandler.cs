@@ -11,31 +11,49 @@ using AssistantCore.Service.Application.Services.Messages.Lifecycle;
 using AssistantCore.Service.Application.Services.Messages.Responses;
 using AssistantCore.Service.Application.Services.Messages.Streaming;
 using AssistantCore.Service.Application.Services.Messages.Validation;
+using AssistantCore.Service.Application.Services.RateLimiting;
 
 namespace AssistantCore.Service.Application.Commands.SendMessage;
 
 public sealed class SendMessageStreamCommandHandler(
     ISendMessageCommandValidator validator,
     IMessageUserContextService userContextService,
+    IMessageRateLimitService rateLimitService,
+    IOrganizationOrchestrationLimitService orchestrationLimitService,
     IMessageProcessingLifecycleService lifecycleService,
     IAgentRuntime agentRuntime,
     ISendMessageResponseFactory responseFactory,
     IMessageStreamErrorReporter errorReporter)
     : IRequestHandler<SendMessageStreamCommand, IAsyncEnumerable<SendMessageStreamEvent>>
 {
-    public Task<IAsyncEnumerable<SendMessageStreamEvent>> HandleAsync(
+    public async Task<IAsyncEnumerable<SendMessageStreamEvent>> HandleAsync(
         SendMessageStreamCommand request,
         CancellationToken cancellationToken)
     {
-        var channel = Channel.CreateUnbounded<SendMessageStreamEvent>();
-        _ = ProduceAsync(request, channel.Writer, cancellationToken);
+        var validatedCommand = await validator.ValidateAsync(
+            new SendMessageCommand(request.ConversationId, request.Message),
+            cancellationToken);
+        var userContext = await userContextService.GetCurrentAsync(cancellationToken);
+        await rateLimitService.EnsureAllowedAsync(userContext, cancellationToken);
+        var orchestrationLease = await orchestrationLimitService.AcquireAsync(
+            userContext.Organization.Id,
+            cancellationToken);
 
-        return Task.FromResult<IAsyncEnumerable<SendMessageStreamEvent>>(
-            channel.Reader.ReadAllAsync(cancellationToken));
+        var channel = Channel.CreateUnbounded<SendMessageStreamEvent>();
+        _ = ProduceAsync(
+            validatedCommand,
+            userContext,
+            orchestrationLease,
+            channel.Writer,
+            cancellationToken);
+
+        return channel.Reader.ReadAllAsync(cancellationToken);
     }
 
     private async Task ProduceAsync(
-        SendMessageStreamCommand request,
+        SendMessageCommand validatedCommand,
+        MessageUserContext userContext,
+        IAsyncDisposable orchestrationLease,
         ChannelWriter<SendMessageStreamEvent> writer,
         CancellationToken cancellationToken)
     {
@@ -43,10 +61,6 @@ public sealed class SendMessageStreamCommandHandler(
 
         try
         {
-            var validatedCommand = await validator.ValidateAsync(
-                new SendMessageCommand(request.ConversationId, request.Message),
-                cancellationToken);
-            var userContext = await userContextService.GetCurrentAsync(cancellationToken);
             processing = await lifecycleService.StartAsync(
                 validatedCommand.ConversationId,
                 validatedCommand.Message,
@@ -86,7 +100,7 @@ public sealed class SendMessageStreamCommandHandler(
             var errorCode = GetErrorCode(exception);
             errorReporter.Report(
                 exception,
-                processing?.ConversationId ?? request.ConversationId,
+                processing?.ConversationId ?? validatedCommand.ConversationId,
                 processing?.UserMessageId,
                 errorCode);
             await FailProcessingAsync(processing, wasCancelled: false);
@@ -94,6 +108,10 @@ public sealed class SendMessageStreamCommandHandler(
                 SendMessageStreamEvent.Error,
                 new { Code = errorCode }));
             writer.TryComplete();
+        }
+        finally
+        {
+            await orchestrationLease.DisposeAsync();
         }
     }
 
@@ -173,7 +191,7 @@ public sealed class SendMessageStreamCommandHandler(
     private static string GetErrorCode(Exception exception) => exception switch
     {
         AiProviderTimeoutException => "ai_provider_timeout",
-        AiProviderLimitException => "ai_provider_limit",
+        AiProviderLimitException => "ai_provider_rate_limited",
         AiProviderUnavailableException => "ai_provider_unavailable",
         AiProviderInvalidResponseException => "ai_provider_invalid_response",
         _ => "message_generation_failed"

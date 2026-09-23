@@ -19,6 +19,7 @@ public interface IMicrosoft365DocumentWorkProcessingRepository
         Microsoft365DocumentWork work,
         bool isPermanent,
         string errorCode,
+        DateTimeOffset failedAt,
         DateTimeOffset nextAttemptAt,
         CancellationToken cancellationToken = default);
 }

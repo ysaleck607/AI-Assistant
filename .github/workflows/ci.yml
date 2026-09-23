@@ -25,22 +25,57 @@ jobs:
   build-and-test:
     name: Build and test
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Validate infrastructure definitions
+        shell: bash
+        run: |
+          set -euo pipefail
+          az bicep build --file deploy/infra/main.bicep --stdout >/dev/null
+          bash -n deploy/infra/approve-frontdoor-private-link.sh
+          bash -n scripts/start-local-live.sh
+
+      - name: Check for duplicate Flyway migration versions
+        run: |
+          cd AssistantCore.Repository/Database/Flyway/sql
+          duplicates=$(ls V*__*.sql | sed -E 's/^(V[0-9]+_[0-9]+_[0-9]+)__.*/\1/' | sort | uniq -d)
+          if [ -n "$duplicates" ]; then
+            echo "::error::Duplicate Flyway migration version(s) found. Flyway refuses to run when two files share the same version:"
+            echo "$duplicates"
+            exit 1
+          fi
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v6
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6
         with:
           dotnet-version: "10.0.x"
 
       - name: Restore dependencies
-        run: dotnet restore Solution.sln
+        run: |
+          dotnet restore Solution.sln
+          dotnet restore AssistantCore.Bff/AssistantCore.Bff.csproj
+
+      - name: Audit .NET dependencies
+        shell: bash
+        run: |
+          set -o pipefail
+          dotnet list Solution.sln package --vulnerable --include-transitive | tee solution-vulnerabilities.txt
+          dotnet list AssistantCore.Bff/AssistantCore.Bff.csproj package --vulnerable --include-transitive | tee bff-vulnerabilities.txt
+
+          if grep -q "has the following vulnerable packages" solution-vulnerabilities.txt \
+            || grep -q "has the following vulnerable packages" bff-vulnerabilities.txt; then
+            echo "::error::One or more vulnerable NuGet packages were detected."
+            exit 1
+          fi
 
       - name: Build
-        run: dotnet build Solution.sln --configuration Release --no-restore
+        run: |
+          dotnet build Solution.sln --configuration Release --no-restore
+          dotnet build AssistantCore.Bff/AssistantCore.Bff.csproj --configuration Release --no-restore
 
       - name: Run tests
         run: dotnet test Solution.sln --configuration Release --no-build --logger "console;verbosity=normal"
@@ -56,7 +91,7 @@ jobs:
       - name: Publish RAG evaluation in pull request
         if: ${{ always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
         continue-on-error: true
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         with:
           script: |
             const fs = require('fs');
@@ -94,7 +129,7 @@ jobs:
 
       - name: Upload RAG evaluation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: rag-evaluation-offline
           path: artifacts/rag-evaluation

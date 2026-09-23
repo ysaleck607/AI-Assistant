@@ -16,7 +16,7 @@ on:
         required: true
         default: certif
         type: choice
-        options: [certif]
+        options: [certif, prod]
       backend_image_tag:
         description: Optional backend SHA tag; defaults to the latest complete tag published in ACR
         required: false
@@ -25,6 +25,16 @@ on:
         description: Optional SPA SHA tag; defaults to the latest published tag in ACR
         required: false
         type: string
+      management_image_tag:
+        description: Optional management SHA tag; defaults to the latest published tag in ACR
+        required: false
+        type: string
+      run_database_migrations:
+        description: Explicitly run Flyway after infrastructure deployment
+        required: true
+        default: true
+        type: boolean
+
 permissions:
   contents: read
   id-token: write
@@ -42,25 +52,34 @@ jobs:
   provision:
     name: ${{ inputs.operation }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    environment: certif
+    timeout-minutes: 45
+    environment: ${{ inputs.environment_name }}
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
 
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Validate naming suffix
+      - name: Validate infrastructure variables
+        env:
+          BFF_ENTRA_CLIENT_ID: ${{ vars.AZURE_BFF_ENTRA_CLIENT_ID }}
         run: |
           if ! printf '%s' "$NAME_SUFFIX" | grep -Eq '^[a-z0-9]{3,8}$'; then
             echo "AZURE_NAME_SUFFIX must contain 3 to 8 lowercase letters or digits." >&2
             exit 1
+          fi
+
+          if [ "${{ inputs.operation }}" = "deploy-environment" ]; then
+            if ! printf '%s' "$BFF_ENTRA_CLIENT_ID" | grep -Eq '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'; then
+              echo "AZURE_BFF_ENTRA_CLIENT_ID must contain the confidential BFF Entra application client id." >&2
+              exit 1
+            fi
           fi
 
       - name: Bootstrap shared ACR
@@ -78,28 +97,38 @@ jobs:
       - name: Select environment resource group
         if: ${{ inputs.operation != 'bootstrap-shared' }}
         run: |
-          RESOURCE_GROUP="${{ vars.AZURE_CERTIF_RESOURCE_GROUP }}"
+          case "${{ inputs.environment_name }}" in
+            certif) RESOURCE_GROUP="${{ vars.AZURE_CERTIF_RESOURCE_GROUP }}" ;;
+            prod) RESOURCE_GROUP="${{ vars.AZURE_PROD_RESOURCE_GROUP }}" ;;
+            *) echo "Unsupported environment." >&2; exit 1 ;;
+          esac
+          if [ -z "$RESOURCE_GROUP" ]; then
+            echo "The Azure resource group variable is missing for ${{ inputs.environment_name }}." >&2
+            exit 1
+          fi
           echo "RESOURCE_GROUP=${RESOURCE_GROUP}" >> "$GITHUB_ENV"
 
       - name: Bootstrap environment Key Vault
         if: ${{ inputs.operation == 'bootstrap-environment' }}
         run: |
           az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
-          az deployment group create \
+          deployment_json="$(az deployment group create \
             --name "bootstrap-${{ inputs.environment_name }}-${GITHUB_RUN_ID}" \
             --resource-group "$RESOURCE_GROUP" \
             --template-file deploy/infra/bootstrap-environment.bicep \
             --parameters \
               location="$LOCATION" \
               environmentName="${{ inputs.environment_name }}" \
-              nameSuffix="$NAME_SUFFIX"
+              nameSuffix="$NAME_SUFFIX" \
+            --output json)"
 
-          KEY_VAULT_NAME="kv-assistant-${{ inputs.environment_name }}-${NAME_SUFFIX}"
+          KEY_VAULT_NAME="$(printf '%s' "$deployment_json" | jq -r '.properties.outputs.keyVaultName.value')"
           {
             echo "### Key Vault created"
             echo
             echo "Seed the required values in \`${KEY_VAULT_NAME}\` before running deploy-environment."
-            echo "The secret values must not be copied into GitHub variables or repository files."
+            echo "Required BFF secret: \`bff-entra-client-secret\`."
+            echo "Secret values must not be copied into GitHub variables or repository files."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Validate application image tags
@@ -107,17 +136,20 @@ jobs:
         env:
           REQUESTED_BACKEND_TAG: ${{ inputs.backend_image_tag }}
           REQUESTED_SPA_TAG: ${{ inputs.spa_image_tag }}
+          REQUESTED_MANAGEMENT_TAG: ${{ inputs.management_image_tag }}
         run: |
           ACR_NAME="${{ vars.AZURE_ACR_NAME }}"
           BACKEND_TAG="$REQUESTED_BACKEND_TAG"
           SPA_TAG="$REQUESTED_SPA_TAG"
+          MANAGEMENT_TAG="$REQUESTED_MANAGEMENT_TAG"
 
           if [ -z "$BACKEND_TAG" ]; then
             while IFS= read -r candidate; do
               if ! printf '%s' "$candidate" | grep -Eq '^sha-[0-9a-f]{40}$'; then
                 continue
               fi
-              if az acr repository show --name "$ACR_NAME" --image "assistant-worker:${candidate}" --only-show-errors >/dev/null \
+              if az acr repository show --name "$ACR_NAME" --image "assistant-bff:${candidate}" --only-show-errors >/dev/null \
+                && az acr repository show --name "$ACR_NAME" --image "assistant-worker:${candidate}" --only-show-errors >/dev/null \
                 && az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${candidate}" --only-show-errors >/dev/null; then
                 BACKEND_TAG="$candidate"
                 break
@@ -138,46 +170,220 @@ jobs:
               | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
           fi
 
-          if [ -z "$BACKEND_TAG" ] || [ -z "$SPA_TAG" ]; then
-            echo "No complete published backend or SPA SHA tag was found in ACR." >&2
+          if [ -z "$MANAGEMENT_TAG" ]; then
+            MANAGEMENT_TAG="$(az acr repository show-tags \
+              --name "$ACR_NAME" \
+              --repository assistant-management \
+              --orderby time_desc \
+              --output tsv \
+              | grep -m 1 -E '^sha-[0-9a-f]{40}$' || true)"
+          fi
+
+          if [ -z "$BACKEND_TAG" ] || [ -z "$SPA_TAG" ] || [ -z "$MANAGEMENT_TAG" ]; then
+            echo "No complete published backend, SPA or management SHA tag was found in ACR." >&2
             exit 1
           fi
 
-          for tag in "$BACKEND_TAG" "$SPA_TAG"; do
+          for tag in "$BACKEND_TAG" "$SPA_TAG" "$MANAGEMENT_TAG"; do
             if ! printf '%s' "$tag" | grep -Eq '^sha-[0-9a-f]{40}$'; then
-              echo "Both image tags must be sha- followed by a complete 40-character Git SHA." >&2
+              echo "All image tags must be sha- followed by a complete 40-character Git SHA." >&2
               exit 1
             fi
           done
 
           az acr repository show --name "$ACR_NAME" --image "assistant-api:${BACKEND_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-bff:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-worker:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-migrations:${BACKEND_TAG}" --only-show-errors >/dev/null
           az acr repository show --name "$ACR_NAME" --image "assistant-spa:${SPA_TAG}" --only-show-errors >/dev/null
+          az acr repository show --name "$ACR_NAME" --image "assistant-management:${MANAGEMENT_TAG}" --only-show-errors >/dev/null
           echo "BACKEND_TAG=${BACKEND_TAG}" >> "$GITHUB_ENV"
           echo "SPA_TAG=${SPA_TAG}" >> "$GITHUB_ENV"
+          echo "MANAGEMENT_TAG=${MANAGEMENT_TAG}" >> "$GITHUB_ENV"
 
-      - name: Preview and deploy environment
+      - name: Ensure ACR pull access
         if: ${{ inputs.operation == 'deploy-environment' }}
         env:
-          SHARED_RESOURCE_GROUP: ${{ vars.AZURE_SHARED_RESOURCE_GROUP }}
+          ACR_NAME: ${{ vars.AZURE_ACR_NAME }}
         run: |
-          PARAMETERS=(
-            location="$LOCATION"
-            environmentName="${{ inputs.environment_name }}"
-            nameSuffix="$NAME_SUFFIX"
-            sharedResourceGroupName="$SHARED_RESOURCE_GROUP"
-            backendImageTag="$BACKEND_TAG"
-            spaImageTag="$SPA_TAG"
-          )
+          ACR_PULL_IDENTITY="id-assistant-acr-${{ inputs.environment_name }}"
 
+          PRINCIPAL_ID="$(az identity show \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$ACR_PULL_IDENTITY" \
+            --query principalId -o tsv 2>/dev/null || true)"
+
+          if [ -z "$PRINCIPAL_ID" ]; then
+            PRINCIPAL_ID="$(az identity create \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$ACR_PULL_IDENTITY" \
+              --location "$LOCATION" \
+              --tags application=assistant environment=${{ inputs.environment_name }} managedBy=bicep \
+              --query principalId -o tsv)"
+          fi
+
+          ACR_ID="$(az acr show \
+            --name "$ACR_NAME" \
+            --query id -o tsv)"
+
+          ACR_PULL_ASSIGNMENT="$(az role assignment list \
+            --assignee-object-id "$PRINCIPAL_ID" \
+            --role AcrPull \
+            --scope "$ACR_ID" \
+            --query '[0].id' -o tsv)"
+
+          if [ -z "$ACR_PULL_ASSIGNMENT" ]; then
+            az role assignment create \
+              --assignee-object-id "$PRINCIPAL_ID" \
+              --assignee-principal-type ServicePrincipal \
+              --role AcrPull \
+              --scope "$ACR_ID" \
+              --only-show-errors >/dev/null
+          fi
+
+      - name: Preview final secure topology
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          BFF_ENTRA_CLIENT_ID: ${{ vars.AZURE_BFF_ENTRA_CLIENT_ID }}
+        run: |
           az deployment group what-if \
             --resource-group "$RESOURCE_GROUP" \
             --template-file deploy/infra/main.bicep \
-            --parameters "${PARAMETERS[@]}"
+            --parameters \
+              location="$LOCATION" \
+              environmentName="${{ inputs.environment_name }}" \
+              nameSuffix="$NAME_SUFFIX" \
+              backendImageTag="$BACKEND_TAG" \
+              spaImageTag="$SPA_TAG" \
+              managementImageTag="$MANAGEMENT_TAG" \
+              bffEntraClientId="$BFF_ENTRA_CLIENT_ID"
 
+      - name: Verify Microsoft 365 consent configuration
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        run: deploy/infra/verify-microsoft365-consent-config.sh "${{ inputs.environment_name }}"
+
+      - name: Synchronize Azure AI Search key
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          SHARED_RESOURCE_GROUP: ${{ vars.AZURE_SHARED_RESOURCE_GROUP }}
+        run: deploy/infra/refresh-azure-search-key.sh \
+          "$RESOURCE_GROUP" "${{ inputs.environment_name }}" "$NAME_SUFFIX" "$SHARED_RESOURCE_GROUP"
+
+      - name: Deploy final secure topology
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        env:
+          BFF_ENTRA_CLIENT_ID: ${{ vars.AZURE_BFF_ENTRA_CLIENT_ID }}
+        run: |
           az deployment group create \
             --name "environment-${{ inputs.environment_name }}-${GITHUB_RUN_ID}" \
             --resource-group "$RESOURCE_GROUP" \
             --template-file deploy/infra/main.bicep \
-            --parameters "${PARAMETERS[@]}"
+            --parameters \
+              location="$LOCATION" \
+              environmentName="${{ inputs.environment_name }}" \
+              nameSuffix="$NAME_SUFFIX" \
+              backendImageTag="$BACKEND_TAG" \
+              spaImageTag="$SPA_TAG" \
+              managementImageTag="$MANAGEMENT_TAG" \
+              bffEntraClientId="$BFF_ENTRA_CLIENT_ID"
+
+      - name: Approve Front Door private origin
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        run: |
+          chmod +x deploy/infra/approve-frontdoor-private-link.sh
+          for attempt in $(seq 1 24); do
+            if deploy/infra/approve-frontdoor-private-link.sh \
+              "$RESOURCE_GROUP" \
+              "${{ inputs.environment_name }}"; then
+              exit 0
+            fi
+
+            if [ "$attempt" -eq 24 ]; then
+              echo "Front Door private endpoint request was not ready after 4 minutes." >&2
+              exit 1
+            fi
+            sleep 10
+          done
+
+      - name: Run database migrations
+        if: ${{ inputs.operation == 'deploy-environment' && inputs.run_database_migrations }}
+        run: |
+          MIGRATIONS_JOB="caj-assistant-mig-${{ inputs.environment_name }}-p"
+          EXECUTION_NAME="$(az containerapp job start \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$MIGRATIONS_JOB" \
+            --query name -o tsv)"
+
+          if [ -z "$EXECUTION_NAME" ]; then
+            echo "Azure did not return a migration execution name." >&2
+            exit 1
+          fi
+
+          deadline=$((SECONDS + 900))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            status="$(az containerapp job execution show \
+              --resource-group "$RESOURCE_GROUP" \
+              --name "$MIGRATIONS_JOB" \
+              --job-execution-name "$EXECUTION_NAME" \
+              --query properties.status -o tsv 2>/dev/null || true)"
+
+            case "$status" in
+              Succeeded)
+                exit 0
+                ;;
+              Failed|Stopped|Degraded)
+                echo "Migration job ${EXECUTION_NAME} ended with status ${status}." >&2
+                exit 1
+                ;;
+              *)
+                sleep 5
+                ;;
+            esac
+          done
+
+          echo "Timed out waiting for migration execution ${EXECUTION_NAME}." >&2
+          exit 1
+
+      - name: Verify security invariants
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        run: |
+          API_APP="ca-assistant-api-${{ inputs.environment_name }}-p"
+          CONTAINER_ENV="cae-assistant-${{ inputs.environment_name }}-p"
+          SQL_SERVER="sql-assistant-${{ inputs.environment_name }}-${NAME_SUFFIX}"
+
+          api_external="$(az containerapp show -g "$RESOURCE_GROUP" -n "$API_APP" --query properties.configuration.ingress.external -o tsv)"
+          env_public="$(az containerapp env show -g "$RESOURCE_GROUP" -n "$CONTAINER_ENV" --query properties.publicNetworkAccess -o tsv)"
+          sql_public="$(az sql server show -g "$RESOURCE_GROUP" -n "$SQL_SERVER" --query publicNetworkAccess -o tsv)"
+
+          if [ "$api_external" != "false" ]; then
+            echo "API ingress must remain internal." >&2
+            exit 1
+          fi
+          if [ "$env_public" != "Disabled" ]; then
+            echo "Container Apps environment public network access must be Disabled." >&2
+            exit 1
+          fi
+          if [ "$sql_public" != "Disabled" ]; then
+            echo "Azure SQL public network access must be Disabled." >&2
+            exit 1
+          fi
+
+      - name: Summarize deployment
+        if: ${{ inputs.operation == 'deploy-environment' }}
+        run: |
+          {
+            echo "### Final secure ${{ inputs.environment_name }} topology deployed"
+            echo
+            echo "- Azure Front Door Premium + WAF is the public edge."
+            echo "- Front Door reaches the Container Apps environment through Private Link."
+            echo "- The Container Apps environment has public network access disabled."
+            echo "- SPA and BFF share one browser origin; the BFF is a sidecar."
+            echo "- AssistantCore.Service ingress is internal-only."
+            echo "- API, Worker, BFF and migrations use distinct managed identities."
+            echo "- API and Worker connect to Azure SQL using managed identity."
+            echo "- Azure SQL public network access is disabled and traffic uses Private Link."
+            echo "- Flyway is the only runtime path using the SQL administrator credential."
+            echo "- Key Vault secret permissions are scoped per workload and secret."
+            echo
+            echo "DNS for assistant-${{ inputs.environment_name }}.onpremia.ca and management-${{ inputs.environment_name }}.onpremia.ca must point to the Front Door endpoint and satisfy Front Door domain validation."
+          } >> "$GITHUB_STEP_SUMMARY"

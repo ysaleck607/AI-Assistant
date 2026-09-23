@@ -385,6 +385,7 @@ public sealed class Microsoft365SubscriptionMaintenanceServiceTests
             string notificationUrl,
             DateTimeOffset expiresAt,
             string clientState,
+            string changeType,
             CancellationToken cancellationToken = default)
         {
             CreateCount++;

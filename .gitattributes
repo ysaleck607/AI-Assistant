@@ -1,0 +1,3 @@
+# Bash cannot parse CRLF line endings (fails with "$'\r': command not found").
+# Force LF regardless of each developer's local core.autocrlf setting.
+*.sh text eol=lf

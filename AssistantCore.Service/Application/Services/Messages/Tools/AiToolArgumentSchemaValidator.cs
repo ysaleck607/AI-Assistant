@@ -221,7 +221,7 @@ public sealed class AiToolArgumentSchemaValidator : IAiToolArgumentSchemaValidat
                 && string.Equals(
                     allowedValue.GetString(),
                     stringValue,
-                    StringComparison.Ordinal)))
+                    StringComparison.OrdinalIgnoreCase)))
         {
             throw Reject(toolCallId, $"Field '{path}' contains a value that is not allowed.");
         }

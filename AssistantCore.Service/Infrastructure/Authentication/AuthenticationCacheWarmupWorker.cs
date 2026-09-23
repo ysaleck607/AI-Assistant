@@ -67,10 +67,14 @@ public sealed class AuthenticationCacheWarmupWorker(
             {
                 using var scope = scopeFactory.CreateScope();
                 var toolRegistry = scope.ServiceProvider.GetRequiredService<IAiToolRegistry>();
+                var outlookIndexingTask = EnsureCurrentUserOutlookIndexedAsync(
+                    request,
+                    stoppingToken);
                 await EnsureCurrentUserOneDriveIndexedAsync(
                     scope.ServiceProvider,
                     request,
                     stoppingToken);
+                await outlookIndexingTask;
 
                 if (!string.IsNullOrWhiteSpace(request.ExternalTenantId)
                     && !string.IsNullOrWhiteSpace(request.EntraUserId))
@@ -133,6 +137,39 @@ public sealed class AuthenticationCacheWarmupWorker(
             logger.LogWarning(
                 exception,
                 "Automatic OneDrive indexing failed for organization {OrganizationId} and authenticated user {EntraUserId}.",
+                request.OrganizationId,
+                request.EntraUserId);
+        }
+    }
+
+    private async Task EnsureCurrentUserOutlookIndexedAsync(
+        WarmupRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.EntraUserId))
+        {
+            return;
+        }
+
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var outlookIndexingService = scope.ServiceProvider
+                .GetRequiredService<IMicrosoft365CurrentUserOutlookIndexingService>();
+            await outlookIndexingService.EnsureIndexedAsync(
+                request.OrganizationId,
+                request.EntraUserId,
+                cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Automatic Outlook indexing failed for organization {OrganizationId} and authenticated user {EntraUserId}.",
                 request.OrganizationId,
                 request.EntraUserId);
         }

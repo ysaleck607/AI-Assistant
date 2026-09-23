@@ -1,4 +1,5 @@
 using AssistantCore.Repository.Domain.Entities;
+using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Repositories;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Models.Microsoft365.Permissions;
@@ -11,6 +12,7 @@ public sealed class Microsoft365AclReconciliationService(
     IMicrosoft365IndexedContentRepository repository,
     IMicrosoft365AclResolver aclResolver,
     IMicrosoft365ContentAclSynchronizationService aclSynchronizationService,
+    IMicrosoft365SecurityIdentityNormalizer identityNormalizer,
     IOptions<Microsoft365Options> options,
     TimeProvider timeProvider,
     ILogger<Microsoft365AclReconciliationService> logger)
@@ -29,11 +31,7 @@ public sealed class Microsoft365AclReconciliationService(
             {
                 try
                 {
-                    var contentReference = CreateContentReference(content);
-                    var resolution = await aclResolver.ResolveAsync(
-                        content.Organization,
-                        contentReference,
-                        cancellationToken);
+                    var resolution = await ResolveAclAsync(content, cancellationToken);
                     if (resolution is Microsoft365AclResolution.ResolvedAcl resolved)
                     {
                         await aclSynchronizationService.SynchronizeAsync(
@@ -67,6 +65,48 @@ public sealed class Microsoft365AclReconciliationService(
             }
         }
         while (candidates.Count == options.Value.AclReconciliationBatchSize);
+    }
+
+    private Task<Microsoft365AclResolution> ResolveAclAsync(
+        Microsoft365IndexedContent content,
+        CancellationToken cancellationToken)
+    {
+        if (content.Microsoft365Source is Microsoft365Source
+            {
+                Kind: Microsoft365SourceKind.OutlookMailbox,
+                ExternalResourceId: var mailboxUserId
+            })
+        {
+            if (string.IsNullOrWhiteSpace(mailboxUserId))
+            {
+                return Task.FromResult<Microsoft365AclResolution>(
+                    new Microsoft365AclResolution.Unresolved(
+                        Microsoft365AclResolutionFailureReason.UnknownPrincipal));
+            }
+
+            var acl = new Microsoft365Acl(
+                [identityNormalizer.NormalizeEntraUserId(mailboxUserId)],
+                [],
+                [],
+                hasAnonymousLink: false,
+                hasOrganizationLink: false,
+                Microsoft365AclInheritance.Unique);
+            return Task.FromResult<Microsoft365AclResolution>(
+                new Microsoft365AclResolution.ResolvedAcl(acl));
+        }
+
+        return ResolveSharePointAclAsync(content, cancellationToken);
+    }
+
+    private async Task<Microsoft365AclResolution> ResolveSharePointAclAsync(
+        Microsoft365IndexedContent content,
+        CancellationToken cancellationToken)
+    {
+        var contentReference = CreateContentReference(content);
+        return await aclResolver.ResolveAsync(
+            content.Organization,
+            contentReference,
+            cancellationToken);
     }
 
     private static Microsoft365ContentReference CreateContentReference(

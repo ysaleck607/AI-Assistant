@@ -14,7 +14,7 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
         CancellationToken cancellationToken)
     {
         // Given
-        var checker = CreateChecker(organizationId, connection: null, siteIds: []);
+        var checker = CreateChecker(organizationId, connection: null);
 
         // When
         var isComplete = await checker.IsCompleteAsync(organizationId, cancellationToken);
@@ -24,9 +24,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AConnectionPendingConsent_When_IsCompleteAsync_Then_ReturnsFalse(
+    public async Task Given_AConnectionPendingConsentWithOldCompletionMarker_When_IsCompleteAsync_Then_ReturnsFalse(
         Guid organizationId,
-        string siteId,
+        DateTimeOffset completedAt,
         CancellationToken cancellationToken)
     {
         // Given
@@ -35,9 +35,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.PendingConsent
-            },
-            siteIds: [siteId]);
+                Status = Microsoft365ConnectionStatus.PendingConsent,
+                OnboardingCompletedAt = completedAt
+            });
 
         // When
         var isComplete = await checker.IsCompleteAsync(organizationId, cancellationToken);
@@ -47,7 +47,7 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AnActiveConnectionWithoutAnySelectedSite_When_IsCompleteAsync_Then_ReturnsFalse(
+    public async Task Given_AnActiveConnectionWithoutPersistedCompletion_When_IsCompleteAsync_Then_ReturnsFalse(
         Guid organizationId,
         CancellationToken cancellationToken)
     {
@@ -57,9 +57,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
-            },
-            siteIds: []);
+                Status = Microsoft365ConnectionStatus.Active,
+                OnboardingCompletedAt = null
+            });
 
         // When
         var isComplete = await checker.IsCompleteAsync(organizationId, cancellationToken);
@@ -69,9 +69,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_AnActiveConnectionWithASelectedSiteButNoIndexedSource_When_IsCompleteAsync_Then_ReturnsFalse(
+    public async Task Given_AnActivePreviouslyCompletedConnection_When_IsCompleteAsync_Then_ReturnsTrueRegardlessOfCurrentSources(
         Guid organizationId,
-        string siteId,
+        DateTimeOffset completedAt,
         CancellationToken cancellationToken)
     {
         // Given
@@ -80,33 +80,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
-            },
-            siteIds: [siteId],
-            hasIndexedSource: false);
-
-        // When
-        var isComplete = await checker.IsCompleteAsync(organizationId, cancellationToken);
-
-        // Then
-        Assert.False(isComplete);
-    }
-
-    [Theory, AutoDomainData]
-    public async Task Given_AnActiveConnectionWithAnIndexedSource_When_IsCompleteAsync_Then_ReturnsTrue(
-        Guid organizationId,
-        string siteId,
-        CancellationToken cancellationToken)
-    {
-        // Given
-        var checker = CreateChecker(
-            organizationId,
-            new Microsoft365Connection
-            {
-                OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
-            },
-            siteIds: [siteId]);
+                Status = Microsoft365ConnectionStatus.Active,
+                OnboardingCompletedAt = completedAt
+            });
 
         // When
         var isComplete = await checker.IsCompleteAsync(organizationId, cancellationToken);
@@ -119,7 +95,7 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
     public async Task Given_AnotherOrganizationId_When_IsCompleteAsync_Then_QueriesOnlyTheRequestedOrganization(
         Guid organizationId,
         Guid anotherOrganizationId,
-        string siteId,
+        DateTimeOffset completedAt,
         CancellationToken cancellationToken)
     {
         // Given
@@ -128,9 +104,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
-            },
-            siteIds: [siteId]);
+                Status = Microsoft365ConnectionStatus.Active,
+                OnboardingCompletedAt = completedAt
+            });
 
         // When
         var isComplete = await checker.IsCompleteAsync(anotherOrganizationId, cancellationToken);
@@ -140,9 +116,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
     }
 
     [Theory, AutoDomainData]
-    public async Task Given_TwoCallsForTheSameOrganization_When_IsCompleteAsync_Then_QueriesTheRepositoriesOnlyOnce(
+    public async Task Given_TwoCallsForTheSameOrganization_When_IsCompleteAsync_Then_QueriesTheRepositoryOnlyOnce(
         Guid organizationId,
-        string siteId,
+        DateTimeOffset completedAt,
         CancellationToken cancellationToken)
     {
         // Given
@@ -151,12 +127,11 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
+                Status = Microsoft365ConnectionStatus.Active,
+                OnboardingCompletedAt = completedAt
             });
-        var sourceRepository = new StubSourceRepository(organizationId, [siteId]);
         var checker = new Microsoft365OnboardingCompletionChecker(
             connectionRepository,
-            sourceRepository,
             new MemoryCache(new MemoryCacheOptions()));
 
         // When
@@ -167,14 +142,13 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
         Assert.True(firstResult);
         Assert.True(secondResult);
         Assert.Equal(1, connectionRepository.CallCount);
-        Assert.Equal(2, sourceRepository.CallCount);
     }
 
     [Theory, AutoDomainData]
     public async Task Given_TwoDifferentOrganizations_When_IsCompleteAsync_Then_CachesEachOrganizationSeparately(
         Guid organizationId,
         Guid anotherOrganizationId,
-        string siteId,
+        DateTimeOffset completedAt,
         CancellationToken cancellationToken)
     {
         // Given
@@ -183,12 +157,11 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
             new Microsoft365Connection
             {
                 OrganizationId = organizationId,
-                Status = Microsoft365ConnectionStatus.Active
+                Status = Microsoft365ConnectionStatus.Active,
+                OnboardingCompletedAt = completedAt
             });
-        var sourceRepository = new StubSourceRepository(organizationId, [siteId]);
         var checker = new Microsoft365OnboardingCompletionChecker(
             connectionRepository,
-            sourceRepository,
             new MemoryCache(new MemoryCacheOptions()));
 
         // When
@@ -203,12 +176,9 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
 
     private static Microsoft365OnboardingCompletionChecker CreateChecker(
         Guid connectionOrganizationId,
-        Microsoft365Connection? connection,
-        IReadOnlyCollection<string> siteIds,
-        bool? hasIndexedSource = null) =>
+        Microsoft365Connection? connection) =>
         new(
             new StubConnectionRepository(connectionOrganizationId, connection),
-            new StubSourceRepository(connectionOrganizationId, siteIds, hasIndexedSource),
             new MemoryCache(new MemoryCacheOptions()));
 
     private sealed class StubConnectionRepository(
@@ -233,39 +203,5 @@ public sealed class Microsoft365OnboardingCompletionCheckerTests
         public Task CompleteConsentAsync(Microsoft365Connection connection, string tenantId, DateTimeOffset completedAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task MarkConsentErrorAsync(Microsoft365Connection connection, string errorCode, DateTimeOffset occurredAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task RevokeAsync(Microsoft365Connection connection, DateTimeOffset occurredAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
-    }
-
-    private sealed class StubSourceRepository(
-        Guid organizationId,
-        IReadOnlyCollection<string> siteIds,
-        bool? hasIndexedSource = null) : IMicrosoft365SourceDiscoveryRepository
-    {
-        public int CallCount { get; private set; }
-
-        public Task<IReadOnlyCollection<string>> GetSiteIdsAsync(
-            Guid requestedOrganizationId,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            return Task.FromResult(requestedOrganizationId == organizationId
-                ? siteIds
-                : (IReadOnlyCollection<string>)[]);
-        }
-
-        public Task<bool> HasIndexedSourceAsync(
-            Guid requestedOrganizationId,
-            CancellationToken cancellationToken = default)
-        {
-            CallCount++;
-            return Task.FromResult(
-                requestedOrganizationId == organizationId
-                && (hasIndexedSource ?? siteIds.Count > 0));
-        }
-        public Task<Microsoft365Site?> FindSiteAsync(Guid organizationId, string siteId, CancellationToken cancellationToken = default) => Task.FromResult<Microsoft365Site?>(null);
-        public Task<IReadOnlyCollection<Microsoft365List>> GetListsAsync(Guid organizationId, string siteId, CancellationToken cancellationToken = default) => Task.FromResult<IReadOnlyCollection<Microsoft365List>>([]);
-        public Task<Microsoft365List?> FindListAsync(Guid organizationId, string siteId, string listId, CancellationToken cancellationToken = default) => Task.FromResult<Microsoft365List?>(null);
-        public Task<Microsoft365ListIndexingRequestCounts> SaveListActivationAsync(Microsoft365List list, DateTimeOffset requestedAt, CancellationToken cancellationToken = default) => Task.FromResult(Microsoft365ListIndexingRequestCounts.Empty);
-        public Task<Microsoft365ListIndexingRequestCounts> SaveListDeactivationAsync(Microsoft365List list, DateTimeOffset requestedAt, bool requestIndexCleanup, CancellationToken cancellationToken = default) => Task.FromResult(Microsoft365ListIndexingRequestCounts.Empty);
-        public Task ReconcileSiteSourcesAsync(Microsoft365Site site, IReadOnlyCollection<Microsoft365SourceDiscoveryData> drives, IReadOnlyCollection<Microsoft365SourceDiscoveryData> lists, DateTimeOffset discoveredAt, CancellationToken cancellationToken = default) => Task.CompletedTask;
     }
 }

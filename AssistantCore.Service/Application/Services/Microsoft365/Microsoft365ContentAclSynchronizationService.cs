@@ -25,10 +25,6 @@ public sealed class Microsoft365ContentAclSynchronizationService(
         ValidateIdentity(organizationId, sourceId, externalContentId);
         var normalizedChunkIds = NormalizeChunkIds(chunkIds);
         ValidateFingerprint(aclFingerprint);
-        await passageWriter.SetAvailabilityAsync(
-            normalizedChunkIds,
-            false,
-            cancellationToken);
 
         var now = timeProvider.GetUtcNow();
         var content = await repository.FindAsync(
@@ -97,15 +93,17 @@ public sealed class Microsoft365ContentAclSynchronizationService(
         CancellationToken cancellationToken = default)
     {
         ValidateIdentity(organizationId, sourceId, externalContentId);
-        ArgumentNullException.ThrowIfNull(acl);
         var content = await repository.FindAsync(
             organizationId,
             sourceId,
             externalContentId,
             cancellationToken);
-        return content is null
-            ? Microsoft365AclSynchronizationResult.NotRegistered
-            : await SynchronizeAsync(content, acl, cancellationToken);
+        if (content is null)
+        {
+            return Microsoft365AclSynchronizationResult.NotRegistered;
+        }
+
+        return await SynchronizeRegisteredContentAsync(content, acl, cancellationToken);
     }
 
     public async Task<Microsoft365AclSynchronizationResult> SynchronizeAsync(
@@ -116,23 +114,23 @@ public sealed class Microsoft365ContentAclSynchronizationService(
         CancellationToken cancellationToken = default)
     {
         ValidateIdentity(organizationId, sourceId, externalContentId);
-        ArgumentNullException.ThrowIfNull(acl);
         var content = await repository.FindAsync(
             organizationId,
             sourceId,
             externalContentId,
-            cancellationToken) ?? throw new InvalidOperationException(
-                "The indexed content must be registered before its ACL is synchronized.");
-        return await SynchronizeAsync(content, acl, cancellationToken);
+            cancellationToken)
+            ?? throw new InvalidOperationException("Indexed Microsoft 365 content was not registered before ACL synchronization.");
+
+        return await SynchronizeRegisteredContentAsync(content, acl, cancellationToken);
     }
 
-    private async Task<Microsoft365AclSynchronizationResult> SynchronizeAsync(
+    private async Task<Microsoft365AclSynchronizationResult> SynchronizeRegisteredContentAsync(
         Microsoft365IndexedContent content,
         Microsoft365Acl acl,
         CancellationToken cancellationToken)
     {
+        ValidateFingerprint(acl.Fingerprint);
         var chunkIds = NormalizeChunkIds(content.Passages.Select(passage => passage.ChunkId).ToArray());
-
         if (string.Equals(content.AclFingerprint, acl.Fingerprint, StringComparison.Ordinal))
         {
             if (content.IsAvailable)
@@ -179,78 +177,66 @@ public sealed class Microsoft365ContentAclSynchronizationService(
         content.UpdatedAt = now;
     }
 
-    private static string? NormalizeSiteUrl(string? siteUrl)
+    private static void ValidateIdentity(Guid organizationId, Guid sourceId, string externalContentId)
     {
-        if (string.IsNullOrWhiteSpace(siteUrl))
-        {
-            return null;
-        }
-
-        if (!Uri.TryCreate(siteUrl, UriKind.Absolute, out var uri)
-            || uri.Scheme != Uri.UriSchemeHttps)
-        {
-            throw new ArgumentException("The SharePoint site URL must use HTTPS.", nameof(siteUrl));
-        }
-
-        return uri.AbsoluteUri.TrimEnd('/');
-    }
-
-    private static string[] NormalizeChunkIds(IReadOnlyCollection<string> chunkIds)
-    {
-        ArgumentNullException.ThrowIfNull(chunkIds);
-        if (chunkIds.Count == 0 || chunkIds.Any(string.IsNullOrWhiteSpace))
-        {
-            throw new ArgumentException("At least one non-empty chunk identifier is required.", nameof(chunkIds));
-        }
-
-        return chunkIds
-            .Distinct(StringComparer.Ordinal)
-            .OrderBy(chunkId => chunkId, StringComparer.Ordinal)
-            .ToArray();
-    }
-
-    private static void ValidateIdentity(
-        Guid organizationId,
-        Guid sourceId,
-        string externalContentId)
-    {
-        if (organizationId == Guid.Empty || sourceId == Guid.Empty)
-        {
-            throw new ArgumentException("Organization and source identifiers are required.");
-        }
-
-        ArgumentException.ThrowIfNullOrWhiteSpace(externalContentId);
+        if (organizationId == Guid.Empty) throw new ArgumentException("Organization id is required.", nameof(organizationId));
+        if (sourceId == Guid.Empty) throw new ArgumentException("Source id is required.", nameof(sourceId));
+        if (string.IsNullOrWhiteSpace(externalContentId)) throw new ArgumentException("External content id is required.", nameof(externalContentId));
     }
 
     private static void ValidateFingerprint(string aclFingerprint)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(aclFingerprint);
-        if (aclFingerprint.Length != 64)
+        if (string.IsNullOrWhiteSpace(aclFingerprint))
         {
-            throw new ArgumentException("The ACL fingerprint must contain 64 characters.", nameof(aclFingerprint));
+            throw new ArgumentException("ACL fingerprint is required.", nameof(aclFingerprint));
         }
     }
+
+    private static IReadOnlyCollection<string> NormalizeChunkIds(IReadOnlyCollection<string> chunkIds)
+    {
+        ArgumentNullException.ThrowIfNull(chunkIds);
+        var normalized = chunkIds
+            .Where(chunkId => !string.IsNullOrWhiteSpace(chunkId))
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+        if (normalized.Length == 0)
+        {
+            throw new ArgumentException("At least one chunk id is required.", nameof(chunkIds));
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeSiteUrl(string? siteUrl) =>
+        string.IsNullOrWhiteSpace(siteUrl) ? null : siteUrl.Trim();
 
     private static void SynchronizePassages(
         Microsoft365IndexedContent content,
         IReadOnlyCollection<string> chunkIds)
     {
         var expectedChunkIds = chunkIds.ToHashSet(StringComparer.Ordinal);
-        foreach (var obsoletePassage in content.Passages
-                     .Where(passage => !expectedChunkIds.Contains(passage.ChunkId))
-                     .ToArray())
+        var removed = content.Passages
+            .Where(passage => !expectedChunkIds.Contains(passage.ChunkId))
+            .ToArray();
+        foreach (var passage in removed)
         {
-            content.Passages.Remove(obsoletePassage);
+            content.Passages.Remove(passage);
         }
 
-        var existingChunkIds = content.Passages
+        var knownChunkIds = content.Passages
             .Select(passage => passage.ChunkId)
             .ToHashSet(StringComparer.Ordinal);
-        foreach (var chunkId in chunkIds.Where(chunkId => !existingChunkIds.Contains(chunkId)))
+        foreach (var chunkId in chunkIds)
         {
+            if (knownChunkIds.Contains(chunkId))
+            {
+                continue;
+            }
+
             content.Passages.Add(new Microsoft365IndexedPassage
             {
                 Id = Guid.NewGuid(),
+                Microsoft365IndexedContentId = content.Id,
                 ChunkId = chunkId
             });
         }

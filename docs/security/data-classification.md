@@ -124,6 +124,7 @@ l'exploitant du service.
 | OrganizationMember | `Name` | B | Donnée personnelle directement identifiante | Chiffrement applicatif | Aucune | Cycle de vie du membre | Client |
 | OrganizationMember | `Email` | B | Donnée personnelle, sert aux recherches exactes | Chiffrement applicatif + blind index HMAC | Égalité exacte via le blind index | Cycle de vie du membre | Client |
 | Microsoft365Drive | `OwnerUserPrincipalName` | B | Un UPN est une adresse de connexion, donc une PII | Chiffrement applicatif | Aucune | Tant que le OneDrive est enregistré | Client |
+| OperationalIncident | `ResolvedByEmail` | B | Adresse de l'opérateur Synaptix ayant résolu l'incident | Chiffrement applicatif | Aucune | Cycle de vie de l'incident | Synaptix |
 | Microsoft365Subscription | `ProtectedClientState` | C | Valide l'authenticité d'une notification Graph | HMAC-SHA256, clé hors SQL | Comparaison en temps constant | Cycle de vie de la souscription | Synaptix |
 | Microsoft365Connection | `ConsentStateHash` | C | Empreinte du `state` de consentement, à usage unique | Déjà haché | Égalité sur l'empreinte | Expiration courte du `state` | Synaptix |
 
@@ -134,11 +135,12 @@ l'exploitant du service.
 | Microsoft365Source | `DisplayName` | Clair | Sert de clé de tri des bibliothèques dans l'administration et le backoffice. Voir [Arbitrages assumés](#arbitrages). |
 | Organization | `Name`, `Domain` | Clair | Identité de l'organisation cliente, nécessaire à l'exploitation et déjà connue de Synaptix. |
 | AdministrativeAuditEntry | `OldValues`, `NewValues` | Clair | Une liste blanche limite déjà ces colonnes à des champs non sensibles ; les y chiffrer rendrait l'audit inexploitable. Toute extension de la liste blanche doit repasser par ce document. |
+| OperationalIncident | `Summary`, `SafeDetail`, `ResolutionNotes` | Clair | Texte déjà redigé de façon sûre en amont par `OperationalIncidentReporter` (jamais de secret, token ou stack trace brute) ; les chiffrer n'ajouterait rien à la confidentialité et empêcherait les requêtes SQL de support direct. |
 
 <a id="inventaire-clair"></a>
 ## Colonnes autorisées en clair — niveau D
 
-Les 23 entités persistées sont inventoriées. Les colonnes ci-dessous sont
+Les 24 entités persistées sont inventoriées. Les colonnes ci-dessous sont
 classées D : identifiants techniques, états, dates, compteurs et empreintes
 déjà calculées.
 
@@ -150,14 +152,16 @@ déjà calculées.
 | Message | `Id`, `ConversationId`, `Role`, `ProcessingStatus`, `Model`, `ProcessingErrorCode`, `CreatedAt`, `UpdatedAt` |
 | MessageSource | `Id`, `MessageId`, `SourceType`, `SourceDate` |
 | MessageWarning | `Id`, `MessageId` |
-| Microsoft365Connection | `Id`, `OrganizationId`, `OrganizationConnectorId`, `TenantId`, `ConsentStateExpiresAt`, `ConsentStateConsumedAt`, `ConsentValidatedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt`, `RowVersion` |
+| Microsoft365Connection | `Id`, `OrganizationId`, `OrganizationConnectorId`, `TenantId`, `ConsentStateExpiresAt`, `ConsentStateConsumedAt`, `ConsentValidatedAt`, `OnboardingCompletedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt`, `RowVersion` |
 | Microsoft365DocumentWork | `Id`, `OrganizationId`, `Microsoft365SourceId`, `Microsoft365SynchronizationId`, `SiteId`, `DriveId`, `DriveItemId`, `ETag`, `CreatedDateTime`, `LastModifiedDateTime`, `Size`, `MimeType`, `DeduplicationKey`, `WorkType`, `AttemptCount`, `LeaseId`, `LeaseExpiresAt`, `NextAttemptAt`, `CompletedAt`, `LastErrorCode`, `CreatedAt` |
 | Microsoft365Drive | `OrganizationId`, `OrganizationConnectorId`, `SiteId`, `DriveId`, `OwnerUserObjectId` |
 | Microsoft365IndexedContent | `Id`, `OrganizationId`, `Microsoft365SourceId`, `ExternalContentId`, `DocumentVersion`, `LastModifiedAt`, `AclFingerprint`, `IsAvailable`, `NextAclReconciliationAt`, `CreatedAt`, `UpdatedAt` |
 | Microsoft365IndexedPassage | toutes : `Id`, `Microsoft365IndexedContentId`, `ChunkId` |
 | Microsoft365List | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId`, `ListId`, `SchemaFingerprint`, `RequiresItemReprocessing` |
 | Microsoft365ListItemWork | `Id`, `OrganizationId`, `Microsoft365SourceId`, `Microsoft365SynchronizationId`, `SiteId`, `ListId`, `ListItemId`, `ETag`, `CreatedDateTime`, `LastModifiedDateTime`, `DeduplicationKey`, `WorkType`, `CreatedAt` |
+| LlmTokenConsumption | toutes : `Id`, `Model`, `PeriodStart`, `TokensConsumed`, `UpdatedAt` — compteur agrege global (aucune donnee client ou personnelle) |
 | Microsoft365ReindexOperation | `Id`, `OrganizationId`, `Microsoft365ConnectionId`, `RequestedByOperatorId`, `SourceCount`, `CompletedSourceCount`, `DiscoveredDocumentCount`, `ProcessedDocumentCount`, `IgnoredDocumentCount`, `FailedDocumentCount`, `RequestedAt`, `StartedAt`, `CompletedAt`, `LastErrorCode` |
+| OperationalIncident | `Id`, `OccurredAt`, `Subsystem`, `Severity`, `CorrelationId`, `OrganizationId`, `OrganizationMemberId`, `RelatedResourceType`, `RelatedResourceId`, `Status`, `ResolvedAt` |
 | Microsoft365Site | toutes : `OrganizationId`, `OrganizationConnectorId`, `SiteId` |
 | Microsoft365Source | `Id`, `Microsoft365ConnectionId`, `Kind`, `ExternalResourceId`, `ParentExternalResourceId`, `Status`, `StatusBeforeUnavailable`, `IsIndexed`, `DiscoveredAt`, `EnabledAt`, `LastSuccessfulSynchronizationAt`, `LastSynchronizationAttemptAt`, `NextSynchronizationAt`, `LastErrorCode`, `SynchronizationLeaseId`, `SynchronizationLeaseExpiresAt` |
 | Microsoft365Subscription | `Id`, `Microsoft365SourceId`, `OrganizationId`, `Resource`, `MicrosoftSubscriptionId`, `ExpiresAt`, `LastRenewedAt`, `LastErrorCode`, `CreatedAt`, `UpdatedAt` |
@@ -165,7 +169,8 @@ déjà calculées.
 | Organization | `Id`, `IdentityProvider`, `ExternalTenantId`, `Status`, `CreatedAt` |
 | OrganizationConnector | toutes : `Id`, `OrganizationId`, `Type`, `Status`, `IsConfigured` |
 | OrganizationConnectorSource | toutes : `OrganizationConnectorId`, `Status`, `IsIndexed` |
-| OrganizationMember | `Id`, `OrganizationId`, `IdentityProvider`, `ExternalUserId`, `Role`, `Status`, `LastSuccessfulAuthenticationAt`, `Version` |
+| OrganizationMember | `Id`, `OrganizationId`, `EmailLookupHash`, `IdentityProvider`, `ExternalUserId`, `Role`, `Status`, `LastSuccessfulAuthenticationAt`, `Version` |
+| PurgeOperation | toutes : `Id`, `OrganizationId`, `Scope`, `TargetId`, `RequestedAt`, `PurgeAfter`, `Status`, `Step`, `LeaseId`, `LeaseExpiresAt`, `AttemptCount`, `NextAttemptAt`, `LastErrorCode`, `CompletedAt` |
 | TokenConsumption | toutes : `Id`, `OrganizationId`, `AssistantMessageId`, `PeriodStartsAt`, `PeriodEndsAt`, `InputTokens`, `OutputTokens`, `TotalTokens`, `CreatedAt` |
 
 `ExternalUserId` reste en clair volontairement : c'est l'`oid` Microsoft Entra,

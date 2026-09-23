@@ -20,7 +20,7 @@ public sealed class OrganizationMemberQueriesUpdateRoleTests
             .Options;
         await using var dbContext = new AssistantCoreDbContext(options);
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateRole(
@@ -57,7 +57,7 @@ public sealed class OrganizationMemberQueriesUpdateRoleTests
         await dbContext.SaveChangesAsync(cancellationToken);
         dbContext.ChangeTracker.Clear();
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateRole(

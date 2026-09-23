@@ -38,5 +38,11 @@ public sealed class Microsoft365DriveConfiguration : IEntityTypeConfiguration<Mi
             drive.OrganizationId,
             drive.OwnerUserObjectId
         });
+
+        builder.HasIndex(drive => new
+        {
+            drive.OrganizationId,
+            drive.SiteId
+        }).HasDatabaseName("IX_Microsoft365Drive_OrganizationId_SiteId");
     }
 }

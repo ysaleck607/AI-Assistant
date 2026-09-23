@@ -44,6 +44,11 @@ public interface IMicrosoft365ConnectionRepository
         DateTimeOffset completedAt,
         CancellationToken cancellationToken = default);
 
+    Task CompleteOnboardingAsync(
+        Guid organizationId,
+        DateTimeOffset completedAt,
+        CancellationToken cancellationToken = default) => Task.CompletedTask;
+
     Task MarkConsentErrorAsync(
         Microsoft365Connection connection,
         string errorCode,

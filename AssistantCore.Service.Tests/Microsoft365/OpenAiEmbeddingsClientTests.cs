@@ -30,7 +30,7 @@ public sealed class OpenAiEmbeddingsClientTests
         var client = new OpenAiEmbeddingsClient(httpClient);
 
         // When
-        var vectors = await client.CreateAsync(
+        var result = await client.CreateAsync(
             "https://api.openai.com/v1",
             apiKey,
             "text-embedding-3-small",
@@ -39,11 +39,67 @@ public sealed class OpenAiEmbeddingsClientTests
             CancellationToken.None);
 
         // Then
-        Assert.Equal([0.1f, 0.2f], vectors[0]);
-        Assert.Equal([0.3f, 0.4f], vectors[1]);
+        Assert.Equal([0.1f, 0.2f], result.Vectors[0]);
+        Assert.Equal([0.3f, 0.4f], result.Vectors[1]);
         using var payload = JsonDocument.Parse(requestPayload!);
         Assert.Equal(2, payload.RootElement.GetProperty("dimensions").GetInt32());
         Assert.Equal(2, payload.RootElement.GetProperty("input").GetArrayLength());
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AUsageFieldInTheResponse_When_CreateAsync_Then_ReturnsTheTotalTokens(
+        string apiKey,
+        string input)
+    {
+        // Given
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"data":[{"index":0,"embedding":[0.1,0.2]}],"usage":{"prompt_tokens":12,"total_tokens":12}}
+                    """)
+            }));
+        var client = new OpenAiEmbeddingsClient(httpClient);
+
+        // When
+        var result = await client.CreateAsync(
+            "https://api.openai.com/v1",
+            apiKey,
+            "text-embedding-3-small",
+            2,
+            [input],
+            CancellationToken.None);
+
+        // Then
+        Assert.Equal(12, result.TotalTokens);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_NoUsageFieldInTheResponse_When_CreateAsync_Then_TotalTokensIsZero(
+        string apiKey,
+        string input)
+    {
+        // Given
+        using var httpClient = new HttpClient(new StubHttpMessageHandler(_ =>
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""
+                    {"data":[{"index":0,"embedding":[0.1,0.2]}]}
+                    """)
+            }));
+        var client = new OpenAiEmbeddingsClient(httpClient);
+
+        // When
+        var result = await client.CreateAsync(
+            "https://api.openai.com/v1",
+            apiKey,
+            "text-embedding-3-small",
+            2,
+            [input],
+            CancellationToken.None);
+
+        // Then
+        Assert.Equal(0, result.TotalTokens);
     }
 
     [Theory, AutoDomainData]

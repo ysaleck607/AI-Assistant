@@ -2,7 +2,10 @@ using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Persistence;
 using AssistantCore.Repository.Queries;
+using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Infrastructure.Persistence;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Tests.Repository;
 
@@ -31,7 +34,7 @@ public sealed class OrganizationMemberQueriesTests
             "IX_OrganizationMember_OrganizationId_IdentityProvider_ExternalUserId");
 
         await using var throwingContext = new ThrowOnceDbContext(options, identityConflict);
-        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.CreateMember(losingMember, CancellationToken.None);
@@ -55,16 +58,242 @@ public sealed class OrganizationMemberQueriesTests
         var member = CreateMember(organizationId, externalUserId, "member@contoso.test");
 
         // An email conflict mentions OrganizationId, but never IdentityProvider or ExternalUserId.
-        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_Email");
+        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_EmailLookupHash");
 
         await using var throwingContext = new ThrowOnceDbContext(options, emailConflict);
-        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When / Then
         var thrownException = await Assert.ThrowsAsync<DbUpdateException>(
             () => queries.CreateMember(member, CancellationToken.None));
         Assert.Same(emailConflict, thrownException);
     }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ASecondMemberWithAnAlreadyUsedEmail_When_CreateMember_Then_TheConflictPropagates(
+        Guid databaseId,
+        Guid organizationId,
+        string internalMemberExternalUserId,
+        string guestExternalUserId,
+        string sharedEmail)
+    {
+        // Given: team decision (2026-09-18) - email stays unique per organization to
+        // avoid permission complexity before the client deployment. A guest sharing an
+        // email with an internal member (see #31/#73) is deferred, not supported yet -
+        // this is the conflict that scenario now produces, not silently swallowed.
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var internalMember = CreateMember(organizationId, internalMemberExternalUserId, sharedEmail);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(internalMember);
+            await seedContext.SaveChangesAsync();
+        }
+
+        var guestMember = CreateMember(organizationId, guestExternalUserId, sharedEmail);
+        var emailConflict = CreateDbUpdateException("IX_OrganizationMember_OrganizationId_EmailLookupHash");
+        await using var throwingContext = new ThrowOnceDbContext(options, emailConflict);
+        var queries = new OrganizationMemberQueries(throwingContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
+
+        // When / Then
+        var thrownException = await Assert.ThrowsAsync<DbUpdateException>(
+            () => queries.CreateMember(guestMember, CancellationToken.None));
+        Assert.Same(emailConflict, thrownException);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AChangedNameAndEmail_When_RefreshContactDetailsAsync_Then_PersistsTheNewValues(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var member = CreateMember(organizationId, externalUserId, "old-email@contoso.test");
+        member.Name = "Old name";
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
+        await queries.RefreshContactDetailsAsync(member.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var persistedMember = await verificationContext.OrganizationMembers.SingleAsync(candidate => candidate.Id == member.Id);
+        Assert.Equal(newName, persistedMember.Name);
+        Assert.Equal(newEmail, persistedMember.Email);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_TwoOrganizationsWithTheSameExternalUserId_When_RefreshContactDetailsAsync_Then_OnlyTheTargetOrganizationsMemberChanges(
+        Guid databaseId,
+        Guid firstOrganizationId,
+        Guid secondOrganizationId,
+        string sharedExternalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given: the identity index is scoped per organization, so the same external user id
+        // can legitimately exist in two organizations. Refreshing one must never touch the other.
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var firstOrganizationMember = CreateMember(firstOrganizationId, sharedExternalUserId, "old-email@contoso.test");
+        var secondOrganizationMember = CreateMember(secondOrganizationId, sharedExternalUserId, "old-email@contoso.test");
+        var secondOrganizationOriginalName = secondOrganizationMember.Name;
+        var secondOrganizationOriginalEmail = secondOrganizationMember.Email;
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.AddRange(firstOrganizationMember, secondOrganizationMember);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
+        await queries.RefreshContactDetailsAsync(firstOrganizationMember.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var untouchedMember = await verificationContext.OrganizationMembers
+            .SingleAsync(candidate => candidate.Id == secondOrganizationMember.Id);
+        Assert.Equal(secondOrganizationOriginalName, untouchedMember.Name);
+        Assert.Equal(secondOrganizationOriginalEmail, untouchedMember.Email);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AnUnchangedNameAndEmail_When_RefreshContactDetailsAsync_Then_DoesNotWriteToTheDatabase(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string email)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var member = CreateMember(organizationId, externalUserId, email);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When / Then - a SaveChangesAsync on a context with no tracked changes is a no-op,
+        // so this only proves the guard skips the write; ThrowOnceDbContext would over-assert.
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
+        await queries.RefreshContactDetailsAsync(member.Id, member.Name, email, CancellationToken.None);
+
+        Assert.False(context.ChangeTracker.HasChanges());
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ANewMember_When_CreateMember_Then_ComputesTheEmailLookupHash(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string email)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var member = CreateMember(organizationId, externalUserId, email);
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        var created = await queries.CreateMember(member, CancellationToken.None);
+
+        // Then
+        Assert.Equal(hasher.ComputeHash(email), created.EmailLookupHash);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AChangedEmail_When_RefreshContactDetailsAsync_Then_RecomputesTheEmailLookupHash(
+        Guid databaseId,
+        Guid organizationId,
+        string externalUserId,
+        string newName,
+        string newEmail)
+    {
+        // Given
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var member = CreateMember(organizationId, externalUserId, "old-email@contoso.test");
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.Add(member);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        await queries.RefreshContactDetailsAsync(member.Id, newName, newEmail, CancellationToken.None);
+
+        // Then
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var persistedMember = await verificationContext.OrganizationMembers.SingleAsync(candidate => candidate.Id == member.Id);
+        Assert.Equal(hasher.ComputeHash(newEmail), persistedMember.EmailLookupHash);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_MembersWithoutALookupHash_When_ReencryptAllMembersAsync_Then_ComputesItForEveryRow(
+        Guid databaseId,
+        Guid firstOrganizationId,
+        Guid secondOrganizationId,
+        string firstExternalUserId,
+        string secondExternalUserId,
+        string firstEmail,
+        string secondEmail)
+    {
+        // Given: rows written before this ticket have no EmailLookupHash yet.
+        var options = new DbContextOptionsBuilder<AssistantCoreDbContext>()
+            .UseInMemoryDatabase(databaseId.ToString())
+            .Options;
+        var hasher = CreateRealHasher();
+        var firstMember = CreateMember(firstOrganizationId, firstExternalUserId, firstEmail);
+        var secondMember = CreateMember(secondOrganizationId, secondExternalUserId, secondEmail);
+        await using (var seedContext = new AssistantCoreDbContext(options))
+        {
+            seedContext.OrganizationMembers.AddRange(firstMember, secondMember);
+            await seedContext.SaveChangesAsync();
+        }
+
+        // When
+        await using var context = new AssistantCoreDbContext(options);
+        var queries = new OrganizationMemberQueries(context, new StubAdministrativeAuditRepository(), hasher);
+        var processedCount = await queries.ReencryptAllMembersAsync(batchSize: 1, CancellationToken.None);
+
+        // Then
+        Assert.Equal(2, processedCount);
+        await using var verificationContext = new AssistantCoreDbContext(options);
+        var reloadedFirst = await verificationContext.OrganizationMembers.SingleAsync(m => m.Id == firstMember.Id);
+        var reloadedSecond = await verificationContext.OrganizationMembers.SingleAsync(m => m.Id == secondMember.Id);
+        Assert.Equal(hasher.ComputeHash(firstEmail), reloadedFirst.EmailLookupHash);
+        Assert.Equal(hasher.ComputeHash(secondEmail), reloadedSecond.EmailLookupHash);
+    }
+
+    private static HmacEmailBlindIndexHasher CreateRealHasher() =>
+        new(Options.Create(new MemberPiiOptions
+        {
+            EmailLookupHmacKey = "unit-test-email-lookup-hmac-key-32-chars-min"
+        }));
 
     private static OrganizationMember CreateMember(Guid organizationId, string externalUserId, string email) =>
         new()

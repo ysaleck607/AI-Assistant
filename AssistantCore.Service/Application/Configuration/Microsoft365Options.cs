@@ -22,6 +22,8 @@ public sealed class Microsoft365Options
 
     public int SharePointGroupCacheMinutes { get; init; } = 5;
 
+    public int OutlookRetentionDays { get; init; } = 180;
+
     public string ConsentCallbackUrl { get; init; } = string.Empty;
 
     public string ConsentSuccessRedirectUrl { get; init; } = string.Empty;
@@ -82,7 +84,7 @@ public sealed class Microsoft365Options
 
     public int MaximumPowerPointSlides { get; init; } = 1_000;
 
-    public int ChunkMaximumTokens { get; init; } = 800;
+    public int ChunkMaximumTokens { get; init; } = 1200;
 
     public int ChunkOverlapTokens { get; init; } = 100;
 
@@ -92,11 +94,11 @@ public sealed class Microsoft365Options
 
     public string EmbeddingApiKey { get; init; } = string.Empty;
 
-    public string EmbeddingModel { get; init; } = "text-embedding-3-small";
-
     public string EmbeddingDeploymentName { get; init; } = string.Empty;
 
     public string EmbeddingApiVersion { get; init; } = "2024-06-01";
+
+    public string EmbeddingModel { get; init; } = "text-embedding-3-small";
 
     public int EmbeddingDimensions { get; init; } = 1536;
 

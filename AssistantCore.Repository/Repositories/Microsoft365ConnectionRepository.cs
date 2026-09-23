@@ -148,6 +148,25 @@ public sealed class Microsoft365ConnectionRepository(AssistantCoreDbContext dbCo
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task CompleteOnboardingAsync(
+        Guid organizationId,
+        DateTimeOffset completedAt,
+        CancellationToken cancellationToken = default)
+    {
+        var connection = await dbContext.Microsoft365Connections
+            .SingleOrDefaultAsync(candidate =>
+                candidate.OrganizationId == organizationId
+                && candidate.Status == Microsoft365ConnectionStatus.Active,
+                cancellationToken);
+        if (connection is null || connection.OnboardingCompletedAt is not null)
+        {
+            return;
+        }
+
+        connection.CompleteOnboarding(completedAt);
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     public async Task MarkConsentErrorAsync(
         Microsoft365Connection connection,
         string errorCode,

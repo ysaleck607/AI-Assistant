@@ -22,7 +22,7 @@ public sealed class OrganizationMemberQueriesUpdateStatusTests
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateStatus(
@@ -67,7 +67,7 @@ public sealed class OrganizationMemberQueriesUpdateStatusTests
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateStatus(
@@ -101,7 +101,7 @@ public sealed class OrganizationMemberQueriesUpdateStatusTests
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateStatus(
@@ -134,7 +134,7 @@ public sealed class OrganizationMemberQueriesUpdateStatusTests
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
         var administrativeAuditRepository = new RecordingAdministrativeAuditRepository();
-        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository);
+        var queries = new OrganizationMemberQueries(dbContext, administrativeAuditRepository, new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateStatus(
@@ -161,7 +161,7 @@ public sealed class OrganizationMemberQueriesUpdateStatusTests
         dbContext.OrganizationMembers.Add(member);
         await dbContext.SaveChangesAsync();
         dbContext.ChangeTracker.Clear();
-        var queries = new OrganizationMemberQueries(dbContext, new StubAdministrativeAuditRepository());
+        var queries = new OrganizationMemberQueries(dbContext, new StubAdministrativeAuditRepository(), new StubEmailBlindIndexHasher());
 
         // When
         var result = await queries.UpdateStatus(

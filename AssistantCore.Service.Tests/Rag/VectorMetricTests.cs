@@ -22,6 +22,32 @@ public sealed class VectorMetricTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_SearchableTextFields_When_EnsureCreatedAsync_Then_DeclaresAsciiFoldingAnalyzer(Guid _)
+    {
+        // Given
+        using var handler = new IndexHandler();
+        using var http = new HttpClient(handler);
+
+        // When
+        await new AzureAiSearchIndexClient(http).EnsureCreatedAsync(
+            "https://search.example",
+            "index",
+            "key",
+            1536,
+            "semantic");
+
+        // Then
+        using var definition = JsonDocument.Parse(handler.Definition!);
+        var fields = definition.RootElement.GetProperty("fields");
+        Assert.All(
+            fields.EnumerateArray().Where(field =>
+                field.GetProperty("name").GetString() is "title" or "content"),
+            field => Assert.Equal(
+                AzureAiSearchMicrosoft365IndexDefinition.SearchableTextAnalyzer,
+                field.GetProperty("analyzer").GetString()));
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_IncompatibleExistingIndex_When_EnsureCreatedAsync_Then_RequiresMigrationWithoutWriting(Guid _)
     {
         // Given

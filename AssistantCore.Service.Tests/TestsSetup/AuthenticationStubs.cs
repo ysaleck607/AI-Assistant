@@ -250,6 +250,33 @@ internal sealed class StubOrganizationMemberQueries : IOrganizationMemberQueries
         ReceivedCancellationToken = cancellationToken;
         return Task.CompletedTask;
     }
+
+    public int RefreshContactDetailsCallCount { get; private set; }
+
+    public Guid? ReceivedContactDetailsMemberId { get; private set; }
+
+    public string? ReceivedName { get; private set; }
+
+    public string? ReceivedEmail { get; private set; }
+
+    public Task RefreshContactDetailsAsync(
+        Guid memberId,
+        string name,
+        string email,
+        CancellationToken cancellationToken = default)
+    {
+        RefreshContactDetailsCallCount++;
+        ReceivedContactDetailsMemberId = memberId;
+        ReceivedName = name;
+        ReceivedEmail = email;
+        ReceivedCancellationToken = cancellationToken;
+        return Task.CompletedTask;
+    }
+
+    public Task<int> ReencryptAllMembersAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult(0);
 }
 
 internal sealed class StubTimeProvider : TimeProvider

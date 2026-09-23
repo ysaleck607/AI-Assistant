@@ -67,11 +67,13 @@ public sealed class Microsoft365DocumentProcessingService(
                 exception,
                 work.AttemptCount,
                 options.Value);
+            var failedAt = timeProvider.GetUtcNow();
             await workRepository.FailAsync(
                 work,
                 failure.IsPermanent,
                 GetErrorCode(exception),
-                timeProvider.GetUtcNow().Add(failure.RetryDelay),
+                failedAt,
+                failedAt.Add(failure.RetryDelay),
                 cancellationToken);
         }
 
@@ -140,7 +142,10 @@ public sealed class Microsoft365DocumentProcessingService(
             cancellationToken);
         if (extraction.Status != Microsoft365ContentExtractionStatus.Success)
         {
-            throw new Microsoft365ContentExtractionException(extraction.Status);
+            throw new Microsoft365ContentExtractionException(
+                extraction.Status,
+                work.Name,
+                work.MimeType);
         }
 
         var sourceType = source.Kind == Microsoft365SourceKind.OneDrive
@@ -182,7 +187,7 @@ public sealed class Microsoft365DocumentProcessingService(
         var obsolete = obsoleteChunkIds.Where(chunkId => !currentChunkIds.Contains(chunkId)).ToArray();
         if (obsolete.Length > 0)
         {
-            await indexWriter.DeleteAsync(obsolete, cancellationToken);
+            await indexWriter.DeleteAsync(work.OrganizationId, obsolete, cancellationToken);
         }
 
         await aclSynchronizationService.RegisterAsync(
@@ -237,7 +242,7 @@ public sealed class Microsoft365DocumentProcessingService(
         var chunkIds = content.Passages.Select(passage => passage.ChunkId).ToArray();
         if (chunkIds.Length > 0)
         {
-            await indexWriter.DeleteAsync(chunkIds, cancellationToken);
+            await indexWriter.DeleteAsync(work.OrganizationId, chunkIds, cancellationToken);
         }
 
         await indexedContentRepository.DeleteAsync(content, cancellationToken);

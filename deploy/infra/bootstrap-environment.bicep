@@ -4,6 +4,7 @@ param location string = resourceGroup().location
 
 @allowed([
   'certif'
+  'prod'
 ])
 param environmentName string
 
@@ -35,7 +36,7 @@ resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' = {
     enabledForDiskEncryption: false
     enabledForTemplateDeployment: true
     publicNetworkAccess: 'Enabled'
-    softDeleteRetentionInDays: 7
+    softDeleteRetentionInDays: environmentName == 'prod' ? 90 : 7
     enablePurgeProtection: true
   }
 }

@@ -2,9 +2,13 @@ using AssistantCore.ExternalServices.Services.Microsoft;
 using AssistantCore.ExternalServices.Services.Azure;
 using AssistantCore.ExternalServices.Services.OpenAI;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Services.AzureSearch;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.Microsoft365;
 using AssistantCore.Service.Application.Services.Messages.Connectors.Microsoft365;
 using AssistantCore.Service.Application.Services.Messages.Tabular;
+using AssistantCore.Service.Infrastructure.AzureSearch;
+using AssistantCore.Service.Infrastructure.LlmQuota;
 using Microsoft.Extensions.Options;
 using System.Text.RegularExpressions;
 
@@ -39,6 +43,7 @@ public static class Microsoft365ServiceCollectionExtensions
                     && options.SubscriptionRenewalLeadTimeHours < options.SubscriptionLifetimeHours
                     && options.SynchronizationLeaseMinutes is > 0 and <= 60
                     && options.SynchronizationIntervalMinutes > 0
+                    && options.OutlookRetentionDays > 0
                     && options.AclReconciliationIntervalMinutes > 0
                     && options.AclReconciliationRetryMinutes > 0
                     && options.AclReconciliationBatchSize is > 0 and <= 1000
@@ -104,16 +109,22 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddHttpClient<MicrosoftGraphListSchemaClient>();
         services.AddHttpClient<MicrosoftGraphListItemDeltaClient>();
         services.AddHttpClient<MicrosoftGraphDriveItemDeltaClient>();
+        services.AddHttpClient<MicrosoftGraphOutlookMessageDeltaClient>();
+        services.AddHttpClient<MicrosoftGraphOutlookMailboxQueryClient>();
+        services.AddHttpClient<MicrosoftGraphOutlookAttachmentClient>();
+        services.AddHttpClient<MicrosoftGraphMailFolderClient>();
         services.AddHttpClient<MicrosoftGraphSharedDriveItemSearchClient>();
         AddProtectedHttpClient<MicrosoftGraphDriveContentClient>(services);
         services.AddHttpClient<MicrosoftGraphSiteSourcesClient>();
         AddProtectedHttpClient<MicrosoftGraphSiteClient>(services);
         services.AddHttpClient<MicrosoftGraphSubscriptionClient>();
         AddProtectedHttpClient<MicrosoftGraphUserGroupClient>(services);
+        AddProtectedHttpClient<MicrosoftGraphUserProfileClient>(services);
         AddProtectedHttpClient<MicrosoftGraphDriveItemPermissionClient>(services);
         AddProtectedHttpClient<MicrosoftSharePointListItemPermissionClient>(services);
         services.AddSingleton<MicrosoftWordContentExtractorClient>();
         services.AddSingleton<MicrosoftExcelContentExtractorClient>();
+        services.AddSingleton<MicrosoftCsvContentExtractorClient>();
         services.AddSingleton<MicrosoftExcelTableReaderClient>();
         services.AddSingleton<MicrosoftPdfContentExtractorClient>();
         services.AddSingleton<MicrosoftPowerPointContentExtractorClient>();
@@ -133,6 +144,9 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365ConsentClient, Microsoft365ConsentClientAdapter>();
         services.AddScoped<IMicrosoft365ListItemDeltaClient, Microsoft365ListItemDeltaClientAdapter>();
         services.AddScoped<IMicrosoft365DriveItemDeltaClient, Microsoft365DriveItemDeltaClientAdapter>();
+        services.AddScoped<IMicrosoft365OutlookMessageDeltaClient, Microsoft365OutlookMessageDeltaClientAdapter>();
+        services.AddScoped<IMicrosoft365OutlookAttachmentClient, Microsoft365OutlookAttachmentClientAdapter>();
+        services.AddScoped<IMicrosoft365CurrentUserOutlookFoldersClient, Microsoft365CurrentUserOutlookFoldersClientAdapter>();
         services.AddScoped<IMicrosoft365DriveContentClient, Microsoft365DriveContentClientAdapter>();
         services.AddScoped<ISpreadsheetWorkbookReader, SpreadsheetWorkbookReaderAdapter>();
         services.AddScoped<IMicrosoft365ListSchemaClient, Microsoft365ListSchemaClientAdapter>();
@@ -142,16 +156,21 @@ public static class Microsoft365ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365SubscriptionClient, Microsoft365SubscriptionClientAdapter>();
         services.AddScoped<IMicrosoft365AclResolver, Microsoft365AclResolverAdapter>();
         services.AddScoped<IMicrosoft365UserGroupResolver, Microsoft365UserGroupResolverAdapter>();
+        services.AddScoped<IMicrosoft365UserProfileResolver, Microsoft365UserProfileResolverAdapter>();
         services.AddScoped<IMicrosoft365SharePointGroupResolver, Microsoft365SharePointGroupResolverAdapter>();
         services.AddScoped<IMicrosoft365PassageAclWriter, Microsoft365PassageAclWriterAdapter>();
         services.AddScoped<IMicrosoft365PassageIndexWriter, Microsoft365PassageIndexWriterAdapter>();
         services.AddScoped<IMicrosoft365ContentExtractor, Microsoft365WordContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365ContentExtractor, Microsoft365ExcelContentExtractorAdapter>();
+        services.AddScoped<IMicrosoft365ContentExtractor, Microsoft365CsvContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365ContentExtractor, Microsoft365PdfImageContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365ContentExtractor, Microsoft365PowerPointContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365ArchiveContentExtractor, Microsoft365ArchiveContentExtractorAdapter>();
         services.AddScoped<IMicrosoft365EmbeddingGenerator, Microsoft365EmbeddingGeneratorAdapter>();
         services.AddScoped<IMicrosoft365SearchIndexInitializer, Microsoft365SearchIndexInitializerAdapter>();
+        services.AddScoped<IAzureSearchQuotaChecker, AzureSearchQuotaCheckerAdapter>();
+        services.AddSingleton<IAzureSearchQuotaAlertGate, InMemoryAzureSearchQuotaAlertGate>();
+        services.AddSingleton<ILlmQuotaAlertGate, InMemoryLlmQuotaAlertGate>();
         services.AddSingleton<IMicrosoft365ClientStateProtector, Microsoft365ClientStateProtectorAdapter>();
         services.AddSingleton(serviceProvider =>
         {

@@ -1,5 +1,7 @@
+using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Conversations.Purge;
+using AssistantCore.Service.Application.Services.Incidents;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
@@ -55,6 +57,7 @@ public sealed class ConversationPurgeWorker(
                 logger.LogWarning(
                     "Conversation purge sweep failed ({FailureType}); retrying after the polling interval.",
                     exception.GetType().Name);
+                await ReportWorkerIncidentAsync(exception, stoppingToken);
                 purgedSomething = false;
             }
 
@@ -68,6 +71,40 @@ public sealed class ConversationPurgeWorker(
             {
                 break;
             }
+        }
+    }
+
+    // Genere son propre correlationId : ce process n'a pas de HttpContext, donc pas de
+    // TraceIdentifier a reutiliser comme le fait ExceptionMiddleware cote HTTP. Entierement
+    // enveloppe dans son propre try/catch : une panne d'observabilite (y compris la
+    // resolution du service, qui peut echouer avant meme d'atteindre OperationalIncidentReporter)
+    // ne doit jamais faire planter la boucle du worker.
+    private async Task ReportWorkerIncidentAsync(Exception exception, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var correlationId = $"worker-{Guid.NewGuid():N}";
+            logger.LogError(
+                "Operational incident captured for worker cycle. CorrelationId: {CorrelationId}",
+                correlationId);
+
+            await using var incidentScope = scopeFactory.CreateAsyncScope();
+            var reporter = incidentScope.ServiceProvider.GetService<IOperationalIncidentReporter>();
+            if (reporter is null)
+            {
+                return;
+            }
+
+            await reporter.ReportAsync(
+                new OperationalIncidentReport(
+                    exception,
+                    correlationId,
+                    SubsystemOverride: OperationalIncidentSubsystem.WorkerJobs),
+                cancellationToken);
+        }
+        catch (Exception reportingException)
+        {
+            logger.LogError(reportingException, "Failed to report an operational incident for a worker cycle.");
         }
     }
 }

@@ -2,14 +2,9 @@ targetScope = 'resourceGroup'
 
 param location string = resourceGroup().location
 
-@description('Compte de stockage qui heberge le trousseau de cles Data Protection.')
-param dataProtectionKeysStorageAccountName string = 'assistantcertkeys01'
-
-@description('Cle Key Vault qui chiffre le trousseau Data Protection.')
-param dataProtectionKeyName string = 'dataprotection-key'
-
 @allowed([
   'certif'
+  'prod'
 ])
 param environmentName string
 
@@ -17,33 +12,61 @@ param environmentName string
 @maxLength(8)
 param nameSuffix string
 
-@description('Resource group containing the shared ACR.')
-param sharedResourceGroupName string
-
 @description('Immutable backend image tag, normally sha-<Git commit SHA>.')
 param backendImageTag string
 
 @description('Immutable SPA image tag, normally sha-<Git commit SHA>.')
 param spaImageTag string
 
-param sqlAdministratorLogin string = 'assistantadmin'
+@description('Immutable management frontend image tag, normally sha-<Git commit SHA>.')
+param managementImageTag string
 
+param sqlAdministratorLogin string = 'assistantadmin'
+param sqlDatabaseName string = 'AssistantCoreDb'
 param azureAdTenantId string = 'organizations'
-param azureAdApiClientId string = 'f70fb50b-52d5-4346-b769-1121cb3ab3e2'
-param microsoft365ClientId string = environmentName == 'certif'
-  ? '558d6670-3549-423e-ae92-c5ff1d3b326b'
-  : '00000000-0000-0000-0000-000000000001'
-param spaEntraClientId string = '97fda345-b54e-4243-b05a-31623871df18'
-param azureSearchEndpoint string = 'https://synaptixsearch.search.windows.net'
-param azureSearchIndexName string = 'microsoft-content-${environmentName}'
-param azureOpenAiEmbeddingEndpoint string = 'https://onpremia-openai-search.openai.azure.com'
+param azureAdApiClientId string = environmentName == 'prod'
+  ? '50058836-543d-4def-be0a-d4d5290d29ad'
+  : 'f70fb50b-52d5-4346-b769-1121cb3ab3e2'
+
+@description('Confidential Entra application used by the BFF. Do not reuse a public SPA registration.')
+param bffEntraClientId string
+
+param microsoft365ClientId string = environmentName == 'prod'
+  ? 'f2907152-55be-49ef-b230-9b6821478433'
+  : '558d6670-3549-423e-ae92-c5ff1d3b326b'
+
+param dataProtectionKeysStorageAccountName string = environmentName == 'prod'
+  ? 'assistantprodkeysonp01'
+  : 'assistantcertkeys01'
+param dataProtectionKeyName string = 'dataprotection-key'
+param azureSearchEndpoint string = 'https://srch-assistant-onp01.search.windows.net'
+param azureSearchIndexName string = environmentName == 'prod'
+  ? 'ogcomptabilite-index-v2'
+  : 'microsoft-content-certif-v2'
+param azureSearchKnowledgeSourceName string = environmentName == 'prod'
+  ? 'ogcomptabilite-v2-knowledge-source'
+  : 'synaptix-m365-certif-v2-knowledge-source'
+param azureSearchKnowledgeBaseName string = environmentName == 'prod'
+  ? 'ogcomptabilite-v2-knowledge-base'
+  : 'synaptix-m365-certif-v2-knowledge-base'
+param azureOpenAiEmbeddingEndpoint string = environmentName == 'prod'
+  ? 'https://aoai-assistant-prod-onp01.openai.azure.com'
+  : 'https://onpremia-openai-search.openai.azure.com'
 param azureOpenAiEmbeddingDeploymentName string = 'm365-text-embedding-3-small'
 param azureOpenAiEmbeddingModelName string = 'text-embedding-3-small'
-param azureOpenAiPlanningEndpoint string = 'https://josetchibozo7-5469-resource.openai.azure.com'
-param azureOpenAiPlanningDeploymentName string = 'gpt-5.5-1'
+param azureOpenAiPlanningEndpoint string = environmentName == 'prod'
+  ? 'https://ai-assistant-prod-onp01.openai.azure.com'
+  : 'https://josetchibozo7-5469-resource.openai.azure.com'
+param azureOpenAiPlanningDeploymentName string = environmentName == 'prod' ? 'gpt-5.5-prod' : 'gpt-5.5-1'
 param azureOpenAiPlanningModelName string = 'gpt-5.5'
-param foundryAccountName string = 'josetchibozo7-5469-resource'
-param foundryProjectName string = 'onpremia-openai-search'
+param foundryAccountName string = environmentName == 'prod' ? 'ai-assistant-prod-onp01' : 'josetchibozo7-5469-resource'
+param foundryProjectName string = environmentName == 'prod' ? 'onpremia-production' : 'onpremia-openai-search'
+param foundryAgentName string = environmentName == 'prod' ? 'onpremia-production-agent' : 'onpremia-test-agent'
+param foundryAgentVersion string = environmentName == 'prod' ? '1' : '17'
+param azureVisionOcrEndpoint string = environmentName == 'prod'
+  ? 'https://vision-assistant-prod-onp01.cognitiveservices.azure.com/'
+  : 'https://vision-assistant.cognitiveservices.azure.com/'
+
 @allowed([
   'minimal'
   'low'
@@ -59,20 +82,42 @@ param tags object = {
 
 var acrName = 'acrassistant${nameSuffix}'
 var acrLoginServer = '${acrName}.azurecr.io'
-var keyVaultEnvironmentName = 'cert'
+var keyVaultEnvironmentName = environmentName == 'certif' ? 'cert' : environmentName
 var keyVaultName = 'kv-assistant-${keyVaultEnvironmentName}-${nameSuffix}'
-var containerEnvironmentName = 'cae-assistant-${environmentName}'
-var apiAppName = 'ca-assistant-api-${environmentName}'
-var workerAppName = 'ca-assistant-worker-${environmentName}'
-var spaAppName = 'ca-assistant-spa-${environmentName}'
-var certifSpaCustomDomain = 'assistant-certif.onpremia.ca'
-var certifBffCustomDomain = 'assistant-bff-certif.onpremia.ca'
-var certifSpaCertificateName = 'assistant-certif.onpremia.ca-cae-assi-260904041349'
-var certifBffCertificateName = 'assistant-bff-certif.onpremi-cae-assi-260904035728'
-var migrationsJobName = 'caj-assistant-migrations-${environmentName}'
-var workloadIdentityName = 'id-assistant-workload-${environmentName}'
+var runtimeEnvironmentName = environmentName == 'prod' ? 'Production' : 'Certif'
+var spaLaunchMode = environmentName == 'prod' ? 'Production' : 'Certification'
+var topologySuffix = 'p'
+var containerEnvironmentName = 'cae-assistant-${environmentName}-${topologySuffix}'
+var apiAppName = 'ca-assistant-api-${environmentName}-${topologySuffix}'
+var workerAppName = 'ca-assistant-worker-${environmentName}-${topologySuffix}'
+var spaAppName = 'ca-assistant-spa-${environmentName}-${topologySuffix}'
+var managementAppName = 'ca-assistant-management-${environmentName}-${topologySuffix}'
+var migrationsJobName = 'caj-assistant-mig-${environmentName}-${topologySuffix}'
+var apiIdentityName = 'id-assistant-api-${environmentName}'
+var workerIdentityName = 'id-assistant-worker-${environmentName}'
+var bffIdentityName = 'id-assistant-bff-${environmentName}'
+var migrationsIdentityName = 'id-assistant-migrations-${environmentName}'
 var acrPullIdentityName = 'id-assistant-acr-${environmentName}'
 var dataProtectionKeysContainerName = 'dataprotection-keys'
+var publicDomain = 'assistant-${environmentName}.onpremia.ca'
+var publicOrigin = 'https://${publicDomain}'
+var managementDomain = 'management-${environmentName}.onpremia.ca'
+var foundryProjectEndpoint = 'https://${foundryAccountName}.services.ai.azure.com/api/projects/${foundryProjectName}'
+var keyVaultBaseUrl = 'https://${keyVaultName}${environment().suffixes.keyvaultDns}/secrets'
+var dataProtectionBlobUri = '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
+var bffDataProtectionBlobUri = '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/bff-keys.xml'
+
+var runtimeSecretNames = [
+  'microsoft365-client-secret'
+  'microsoft365-clientstate-hmac-key'
+  'microsoft365-sharepoint-certificate-pfx'
+  'microsoft365-sharepoint-certificate-password'
+  'azure-vision-ocr-api-key'
+  'azure-openai-embedding-api-key'
+  'azure-openai-planning-api-key'
+  'azure-search-api-key'
+  'member-pii-email-lookup-hmac-key'
+]
 
 resource keyVault 'Microsoft.KeyVault/vaults@2023-07-01' existing = {
   name: keyVaultName
@@ -96,8 +141,26 @@ resource foundryProject 'Microsoft.CognitiveServices/accounts/projects@2025-06-0
   name: foundryProjectName
 }
 
-resource workloadIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
-  name: workloadIdentityName
+resource apiIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: apiIdentityName
+  location: location
+  tags: tags
+}
+
+resource workerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: workerIdentityName
+  location: location
+  tags: tags
+}
+
+resource bffIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: bffIdentityName
+  location: location
+  tags: tags
+}
+
+resource migrationsIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: migrationsIdentityName
   location: location
   tags: tags
 }
@@ -108,64 +171,109 @@ resource acrPullIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-
   tags: tags
 }
 
-resource keyVaultSecretsUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(keyVault.id, workloadIdentity.id, 'KeyVaultSecretsUser')
-  scope: keyVault
-  properties: {
-    principalId: workloadIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '4633458b-17de-408a-b874-0445c86b69e6'
-    )
+module apiSecretRoles './modules/key-vault-secret-role.bicep' = [for secretName in runtimeSecretNames: {
+  name: 'api-kv-${uniqueString(secretName)}'
+  params: {
+    keyVaultName: keyVault.name
+    secretName: secretName
+    principalId: apiIdentity.properties.principalId
+  }
+}]
+
+module workerSecretRoles './modules/key-vault-secret-role.bicep' = [for secretName in runtimeSecretNames: {
+  name: 'worker-kv-${uniqueString(secretName)}'
+  params: {
+    keyVaultName: keyVault.name
+    secretName: secretName
+    principalId: workerIdentity.properties.principalId
+  }
+}]
+
+module bffSecretRole './modules/key-vault-secret-role.bicep' = {
+  name: 'bff-kv-client-secret'
+  params: {
+    keyVaultName: keyVault.name
+    secretName: 'bff-entra-client-secret'
+    principalId: bffIdentity.properties.principalId
   }
 }
 
-resource dataProtectionKeysBlobContributor 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(dataProtectionKeysStorage.id, workloadIdentity.id, 'StorageBlobDataContributor')
+module migrationsSecretRole './modules/key-vault-secret-role.bicep' = {
+  name: 'migrations-kv-sql-admin'
+  params: {
+    keyVaultName: keyVault.name
+    secretName: 'sql-admin-password'
+    principalId: migrationsIdentity.properties.principalId
+  }
+}
+
+resource apiDataProtectionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKeysStorage.id, apiIdentity.id, 'StorageBlobDataContributor')
   scope: dataProtectionKeysStorage
   properties: {
-    principalId: workloadIdentity.properties.principalId
+    principalId: apiIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      'ba92f5b4-2d11-453d-a403-e96b0029c9fe'
-    )
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
   }
 }
 
-resource dataProtectionKeyCryptoUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(dataProtectionKey.id, workloadIdentity.id, 'KeyVaultCryptoUser')
+resource workerDataProtectionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKeysStorage.id, workerIdentity.id, 'StorageBlobDataContributor')
+  scope: dataProtectionKeysStorage
+  properties: {
+    principalId: workerIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  }
+}
+
+resource bffDataProtectionBlobRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKeysStorage.id, bffIdentity.id, 'StorageBlobDataContributor')
+  scope: dataProtectionKeysStorage
+  properties: {
+    principalId: bffIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'ba92f5b4-2d11-453d-a403-e96b0029c9fe')
+  }
+}
+
+resource apiDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKey.id, apiIdentity.id, 'KeyVaultCryptoUser')
   scope: dataProtectionKey
   properties: {
-    principalId: workloadIdentity.properties.principalId
+    principalId: apiIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '12338af0-0e69-4776-bde6-1746d40b5a80'
-    )
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
   }
 }
 
-resource foundryUser 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(foundryProject.id, workloadIdentity.id, 'FoundryUser')
+resource workerDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKey.id, workerIdentity.id, 'KeyVaultCryptoUser')
+  scope: dataProtectionKey
+  properties: {
+    principalId: workerIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
+  }
+}
+
+resource bffDataProtectionKeyRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(dataProtectionKey.id, bffIdentity.id, 'KeyVaultCryptoUser')
+  scope: dataProtectionKey
+  properties: {
+    principalId: bffIdentity.properties.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '12338af0-0e69-4776-bea7-57ae8d297424')
+  }
+}
+
+resource apiFoundryRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
+  name: guid(foundryProject.id, apiIdentity.id, 'FoundryUser')
   scope: foundryProject
   properties: {
-    principalId: workloadIdentity.properties.principalId
+    principalId: apiIdentity.properties.principalId
     principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '53ca6127-db72-4b80-b1b0-d745d6d5456d'
-    )
-  }
-}
-
-module acrPullRole './modules/acr-pull-role.bicep' = {
-  name: 'acr-pull-${environmentName}'
-  scope: resourceGroup(sharedResourceGroupName)
-  params: {
-    acrName: acrName
-    principalId: acrPullIdentity.properties.principalId
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')
   }
 }
 
@@ -175,14 +283,28 @@ module sql './modules/sql.bicep' = {
     location: location
     environmentName: environmentName
     nameSuffix: nameSuffix
-    keyVaultName: keyVault.name
     administratorLogin: sqlAdministratorLogin
+    databaseName: sqlDatabaseName
     administratorPassword: keyVault.getSecret('sql-admin-password')
+    publicNetworkAccess: 'Disabled'
+    productionWorkload: environmentName == 'prod'
     tags: tags
   }
 }
 
-resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
+module privateNetwork './modules/private-network.bicep' = {
+  name: 'private-network-${environmentName}'
+  params: {
+    location: location
+    environmentName: environmentName
+    nameSuffix: nameSuffix
+    sqlServerId: sql.outputs.serverId
+    sqlServerName: sql.outputs.serverName
+    tags: tags
+  }
+}
+
+resource containerEnvironment 'Microsoft.App/managedEnvironments@2026-01-01' = {
   name: containerEnvironmentName
   location: location
   tags: tags
@@ -190,28 +312,19 @@ resource containerEnvironment 'Microsoft.App/managedEnvironments@2024-03-01' = {
     appLogsConfiguration: {
       destination: 'azure-monitor'
     }
-    zoneRedundant: false
+    publicNetworkAccess: 'Disabled'
+    vnetConfiguration: {
+      infrastructureSubnetId: privateNetwork.outputs.containerAppsSubnetId
+      internal: true
+    }
+    workloadProfiles: [
+      {
+        name: 'Consumption'
+        workloadProfileType: 'Consumption'
+      }
+    ]
+    zoneRedundant: environmentName == 'prod'
   }
-}
-
-var apiBaseUrl = 'https://${certifBffCustomDomain}'
-var spaBaseUrl = 'https://${certifSpaCustomDomain}'
-var keyVaultBaseUrl = '${keyVault.properties.vaultUri}secrets'
-
-var certifSpaCertificateId = resourceId(
-  'Microsoft.App/managedEnvironments/managedCertificates',
-  containerEnvironmentName,
-  certifSpaCertificateName
-)
-var certifBffCertificateId = resourceId(
-  'Microsoft.App/managedEnvironments/managedCertificates',
-  containerEnvironmentName,
-  certifBffCertificateName
-)
-
-var managedIdentities = {
-  '${workloadIdentity.id}': {}
-  '${acrPullIdentity.id}': {}
 }
 
 var registryConfiguration = [
@@ -221,111 +334,45 @@ var registryConfiguration = [
   }
 ]
 
-var databaseSecret = {
-  name: 'database-connection'
-  keyVaultUrl: sql.outputs.connectionSecretUri
-  identity: workloadIdentity.id
-}
+var apiSecrets = [for secretName in runtimeSecretNames: {
+  name: secretName
+  keyVaultUrl: '${keyVaultBaseUrl}/${secretName}'
+  identity: apiIdentity.id
+}]
 
-var apiSecrets = [
-  databaseSecret
-      {
-        name: 'microsoft365-client-secret'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-client-secret'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-clientstate-hmac-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-clientstate-hmac-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-sharepoint-certificate-pfx'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-sharepoint-certificate-pfx'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-sharepoint-certificate-password'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-sharepoint-certificate-password'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-vision-ocr-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-vision-ocr-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-openai-embedding-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-openai-embedding-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-openai-planning-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-openai-planning-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-search-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-search-api-key'
-        identity: workloadIdentity.id
-      }
-    ]
+var workerSecrets = [for secretName in runtimeSecretNames: {
+  name: secretName
+  keyVaultUrl: '${keyVaultBaseUrl}/${secretName}'
+  identity: workerIdentity.id
+}]
 
-var commonApiEnvironmentVariables = [
-  {
-    name: 'ASPNETCORE_ENVIRONMENT'
-    value: 'Certif'
-  }
-  {
-    name: 'AZURE_CLIENT_ID'
-    value: workloadIdentity.properties.clientId
-  }
-  {
-    name: 'ConnectionStrings__AssistantCoreDatabase'
-    secretRef: 'database-connection'
-  }
-  {
-    name: 'Cors__AllowedOrigins__0'
-    value: spaBaseUrl
-  }
+var apiDatabaseConnection = 'Server=tcp:${sql.outputs.serverFqdn},1433;Initial Catalog=${sql.outputs.databaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Managed Identity;User Id=${apiIdentity.properties.clientId};'
+var workerDatabaseConnection = 'Server=tcp:${sql.outputs.serverFqdn},1433;Initial Catalog=${sql.outputs.databaseName};Encrypt=True;TrustServerCertificate=False;Connection Timeout=30;Authentication=Active Directory Managed Identity;User Id=${workerIdentity.properties.clientId};'
+
+var commonRuntimeEnvironmentVariables = [
   {
     name: 'Microsoft365__ConsentCallbackUrl'
-    value: '${apiBaseUrl}/api/microsoft365/consent/callback'
+    value: '${publicOrigin}/api/microsoft365/consent/callback'
   }
   {
     name: 'Microsoft365__ConsentSuccessRedirectUrl'
-    value: '${spaBaseUrl}/microsoft365/consent/success'
+    value: '${publicOrigin}/microsoft365/consent/success'
   }
   {
     name: 'Microsoft365__ConsentErrorRedirectUrl'
-    value: '${spaBaseUrl}/microsoft365/consent/error'
+    value: '${publicOrigin}/microsoft365/consent/error'
   }
   {
     name: 'Microsoft365__WebhookBaseUrl'
-    value: apiBaseUrl
+    value: publicOrigin
   }
   {
     name: 'DataProtectionKeyStorage__BlobStorageUri'
-    value: '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
+    value: dataProtectionBlobUri
   }
   {
     name: 'DataProtectionKeyStorage__KeyVaultKeyUri'
     value: dataProtectionKey.properties.keyUriWithVersion
-  }
-]
-
-var certifApiEnvironmentVariables = [
-  {
-    name: 'AzureAd__TenantId'
-    value: azureAdTenantId
-  }
-  {
-    name: 'AzureAd__ClientId'
-    value: azureAdApiClientId
-  }
-  {
-    name: 'AzureAd__Audience'
-    value: azureAdApiClientId
   }
   {
     name: 'Microsoft365__ClientId'
@@ -338,6 +385,10 @@ var certifApiEnvironmentVariables = [
   {
     name: 'Microsoft365__ClientStateHmacKey'
     secretRef: 'microsoft365-clientstate-hmac-key'
+  }
+  {
+    name: 'MemberPii__EmailLookupHmacKey'
+    secretRef: 'member-pii-email-lookup-hmac-key'
   }
   {
     name: 'Microsoft365__SharePointCertificateBase64'
@@ -353,7 +404,7 @@ var certifApiEnvironmentVariables = [
   }
   {
     name: 'Microsoft365__OcrEndpoint'
-    value: 'https://vision-assistant.cognitiveservices.azure.com/'
+    value: azureVisionOcrEndpoint
   }
   {
     name: 'Microsoft365__EmbeddingApiKey'
@@ -380,6 +431,14 @@ var certifApiEnvironmentVariables = [
     value: azureSearchIndexName
   }
   {
+    name: 'AzureSearch__KnowledgeSourceName'
+    value: azureSearchKnowledgeSourceName
+  }
+  {
+    name: 'AzureSearch__KnowledgeBaseName'
+    value: azureSearchKnowledgeBaseName
+  }
+  {
     name: 'AzureSearch__ApiKey'
     secretRef: 'azure-search-api-key'
   }
@@ -403,32 +462,40 @@ var certifApiEnvironmentVariables = [
     name: 'AzureSearch__PlanningModelApiKey'
     secretRef: 'azure-openai-planning-api-key'
   }
+  {
+    name: 'FoundryAgent__ProjectEndpoint'
+    value: foundryProjectEndpoint
+  }
+  {
+    name: 'FoundryAgent__AgentName'
+    value: foundryAgentName
+  }
+  {
+    name: 'FoundryAgent__AgentVersion'
+    value: foundryAgentVersion
+  }
 ]
 
-resource api 'Microsoft.App/containerApps@2024-03-01' = {
+resource api 'Microsoft.App/containerApps@2025-01-01' = {
   name: apiAppName
   location: location
   tags: tags
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: managedIdentities
+    userAssignedIdentities: {
+      '${apiIdentity.id}': {}
+      '${acrPullIdentity.id}': {}
+    }
   }
   properties: {
     managedEnvironmentId: containerEnvironment.id
     configuration: {
       activeRevisionsMode: 'Single'
       ingress: {
-        external: true
+        external: false
         allowInsecure: false
         targetPort: 8080
         transport: 'auto'
-        customDomains: [
-          {
-            name: certifBffCustomDomain
-            certificateId: certifBffCertificateId
-            bindingType: 'SniEnabled'
-          }
-        ]
       }
       registries: registryConfiguration
       secrets: apiSecrets
@@ -438,7 +505,36 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'api'
           image: '${acrLoginServer}/assistant-api:${backendImageTag}'
-          env: concat(commonApiEnvironmentVariables, certifApiEnvironmentVariables)
+          env: concat([
+            {
+              name: 'ASPNETCORE_ENVIRONMENT'
+              value: runtimeEnvironmentName
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: apiIdentity.properties.clientId
+            }
+            {
+              name: 'ConnectionStrings__AssistantCoreDatabase'
+              value: apiDatabaseConnection
+            }
+            {
+              name: 'Cors__AllowedOrigins__0'
+              value: publicOrigin
+            }
+            {
+              name: 'AzureAd__TenantId'
+              value: azureAdTenantId
+            }
+            {
+              name: 'AzureAd__ClientId'
+              value: azureAdApiClientId
+            }
+            {
+              name: 'AzureAd__Audience'
+              value: azureAdApiClientId
+            }
+          ], commonRuntimeEnvironmentVariables)
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -483,178 +579,24 @@ resource api 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
   }
-  dependsOn: [acrPullRole, keyVaultSecretsUser, foundryUser, dataProtectionKeysBlobContributor, dataProtectionKeyCryptoUser]
+  dependsOn: [
+    apiSecretRoles
+    apiDataProtectionBlobRole
+    apiDataProtectionKeyRole
+    apiFoundryRole
+  ]
 }
 
-var workerSecrets = [
-  databaseSecret
-      {
-        name: 'microsoft365-client-secret'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-client-secret'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-clientstate-hmac-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-clientstate-hmac-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-sharepoint-certificate-pfx'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-sharepoint-certificate-pfx'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'microsoft365-sharepoint-certificate-password'
-        keyVaultUrl: '${keyVaultBaseUrl}/microsoft365-sharepoint-certificate-password'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-vision-ocr-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-vision-ocr-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-openai-embedding-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-openai-embedding-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-openai-planning-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-openai-planning-api-key'
-        identity: workloadIdentity.id
-      }
-      {
-        name: 'azure-search-api-key'
-        keyVaultUrl: '${keyVaultBaseUrl}/azure-search-api-key'
-        identity: workloadIdentity.id
-      }
-    ]
-
-var commonWorkerEnvironmentVariables = [
-  {
-    name: 'DOTNET_ENVIRONMENT'
-    value: 'Certif'
-  }
-  {
-    name: 'AZURE_CLIENT_ID'
-    value: workloadIdentity.properties.clientId
-  }
-  {
-    name: 'ConnectionStrings__AssistantCoreDatabase'
-    secretRef: 'database-connection'
-  }
-  {
-    name: 'Microsoft365__ConsentCallbackUrl'
-    value: '${apiBaseUrl}/api/microsoft365/consent/callback'
-  }
-  {
-    name: 'Microsoft365__ConsentSuccessRedirectUrl'
-    value: '${spaBaseUrl}/microsoft365/consent/success'
-  }
-  {
-    name: 'Microsoft365__ConsentErrorRedirectUrl'
-    value: '${spaBaseUrl}/microsoft365/consent/error'
-  }
-  {
-    name: 'Microsoft365__WebhookBaseUrl'
-    value: apiBaseUrl
-  }
-  {
-    name: 'DataProtectionKeyStorage__BlobStorageUri'
-    value: '${dataProtectionKeysStorage.properties.primaryEndpoints.blob}${dataProtectionKeysContainerName}/keys.xml'
-  }
-  {
-    name: 'DataProtectionKeyStorage__KeyVaultKeyUri'
-    value: dataProtectionKey.properties.keyUriWithVersion
-  }
-]
-
-var certifWorkerEnvironmentVariables = [
-  {
-    name: 'Microsoft365__ClientId'
-    value: microsoft365ClientId
-  }
-  {
-    name: 'Microsoft365__ClientSecret'
-    secretRef: 'microsoft365-client-secret'
-  }
-  {
-    name: 'Microsoft365__ClientStateHmacKey'
-    secretRef: 'microsoft365-clientstate-hmac-key'
-  }
-  {
-    name: 'Microsoft365__SharePointCertificateBase64'
-    secretRef: 'microsoft365-sharepoint-certificate-pfx'
-  }
-  {
-    name: 'Microsoft365__SharePointCertificatePassword'
-    secretRef: 'microsoft365-sharepoint-certificate-password'
-  }
-  {
-    name: 'Microsoft365__OcrApiKey'
-    secretRef: 'azure-vision-ocr-api-key'
-  }
-  {
-    name: 'Microsoft365__OcrEndpoint'
-    value: 'https://vision-assistant.cognitiveservices.azure.com/'
-  }
-  {
-    name: 'Microsoft365__EmbeddingApiKey'
-    secretRef: 'azure-openai-embedding-api-key'
-  }
-  {
-    name: 'Microsoft365__EmbeddingEndpoint'
-    value: azureOpenAiEmbeddingEndpoint
-  }
-  {
-    name: 'Microsoft365__EmbeddingDeploymentName'
-    value: azureOpenAiEmbeddingDeploymentName
-  }
-  {
-    name: 'Microsoft365__EmbeddingModel'
-    value: azureOpenAiEmbeddingModelName
-  }
-  {
-    name: 'AzureSearch__Endpoint'
-    value: azureSearchEndpoint
-  }
-  {
-    name: 'AzureSearch__IndexName'
-    value: azureSearchIndexName
-  }
-  {
-    name: 'AzureSearch__ApiKey'
-    secretRef: 'azure-search-api-key'
-  }
-  {
-    name: 'AzureSearch__KnowledgeBaseRetrievalReasoningEffort'
-    value: knowledgeBaseRetrievalReasoningEffort
-  }
-  {
-    name: 'AzureSearch__PlanningModelEndpoint'
-    value: azureOpenAiPlanningEndpoint
-  }
-  {
-    name: 'AzureSearch__PlanningModelDeploymentName'
-    value: azureOpenAiPlanningDeploymentName
-  }
-  {
-    name: 'AzureSearch__PlanningModelName'
-    value: azureOpenAiPlanningModelName
-  }
-  {
-    name: 'AzureSearch__PlanningModelApiKey'
-    secretRef: 'azure-openai-planning-api-key'
-  }
-]
-
-resource worker 'Microsoft.App/containerApps@2024-03-01' = {
+resource worker 'Microsoft.App/containerApps@2025-01-01' = {
   name: workerAppName
   location: location
   tags: tags
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: managedIdentities
+    userAssignedIdentities: {
+      '${workerIdentity.id}': {}
+      '${acrPullIdentity.id}': {}
+    }
   }
   properties: {
     managedEnvironmentId: containerEnvironment.id
@@ -668,7 +610,20 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         {
           name: 'worker'
           image: '${acrLoginServer}/assistant-worker:${backendImageTag}'
-          env: concat(commonWorkerEnvironmentVariables, certifWorkerEnvironmentVariables)
+          env: concat([
+            {
+              name: 'DOTNET_ENVIRONMENT'
+              value: runtimeEnvironmentName
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: workerIdentity.properties.clientId
+            }
+            {
+              name: 'ConnectionStrings__AssistantCoreDatabase'
+              value: workerDatabaseConnection
+            }
+          ], commonRuntimeEnvironmentVariables)
           resources: {
             cpu: json('0.5')
             memory: '1Gi'
@@ -676,22 +631,28 @@ resource worker 'Microsoft.App/containerApps@2024-03-01' = {
         }
       ]
       scale: {
-        // CERTIF continuously reconciles Microsoft 365 content and permissions.
         minReplicas: 1
         maxReplicas: 1
       }
     }
   }
-  dependsOn: [acrPullRole, keyVaultSecretsUser, dataProtectionKeysBlobContributor, dataProtectionKeyCryptoUser]
+  dependsOn: [
+    workerSecretRoles
+    workerDataProtectionBlobRole
+    workerDataProtectionKeyRole
+  ]
 }
 
-resource spa 'Microsoft.App/containerApps@2024-03-01' = {
+var internalApiBaseUrl = 'https://${api.properties.configuration.ingress.fqdn}'
+
+resource spa 'Microsoft.App/containerApps@2025-01-01' = {
   name: spaAppName
   location: location
   tags: tags
   identity: {
     type: 'UserAssigned'
     userAssignedIdentities: {
+      '${bffIdentity.id}': {}
       '${acrPullIdentity.id}': {}
     }
   }
@@ -704,15 +665,15 @@ resource spa 'Microsoft.App/containerApps@2024-03-01' = {
         allowInsecure: false
         targetPort: 8080
         transport: 'auto'
-        customDomains: [
-          {
-            name: certifSpaCustomDomain
-            certificateId: certifSpaCertificateId
-            bindingType: 'SniEnabled'
-          }
-        ]
       }
       registries: registryConfiguration
+      secrets: [
+        {
+          name: 'bff-entra-client-secret'
+          keyVaultUrl: '${keyVaultBaseUrl}/bff-entra-client-secret'
+          identity: bffIdentity.id
+        }
+      ]
     }
     template: {
       containers: [
@@ -722,30 +683,92 @@ resource spa 'Microsoft.App/containerApps@2024-03-01' = {
           env: [
             {
               name: 'SPA_API_BASE_URL'
-              value: apiBaseUrl
+              value: '/'
             }
             {
               name: 'SPA_AUTHENTICATION_MODE'
-              value: 'MicrosoftEntra'
+              value: 'Bff'
             }
             {
               name: 'SPA_LAUNCH_MODE'
-              value: 'Certification'
+              value: spaLaunchMode
             }
             {
               name: 'SPA_AUTHENTICATION_URL'
-              value: '${apiBaseUrl}/local-auth/token'
+              value: '/bff'
             }
             {
-              name: 'SPA_ENTRA_CLIENT_ID'
-              value: spaEntraClientId
+              name: 'SPA_BFF_UPSTREAM'
+              value: 'http://127.0.0.1:8081'
             }
             {
-              name: 'SPA_ENTRA_AUTHORITY'
-              value: '${environment().authentication.loginEndpoint}${azureAdTenantId}'
+              name: 'SPA_API_UPSTREAM'
+              value: internalApiBaseUrl
+            }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+        }
+        {
+          name: 'bff'
+          image: '${acrLoginServer}/assistant-bff:${backendImageTag}'
+          env: [
+            {
+              name: 'ASPNETCORE_ENVIRONMENT'
+              value: runtimeEnvironmentName
             }
             {
-              name: 'SPA_ENTRA_SCOPE'
+              name: 'ASPNETCORE_URLS'
+              value: 'http://+:8081'
+            }
+            {
+              name: 'AZURE_CLIENT_ID'
+              value: bffIdentity.properties.clientId
+            }
+            {
+              name: 'AzureAd__Instance'
+              value: environment().authentication.loginEndpoint
+            }
+            {
+              name: 'AzureAd__TenantId'
+              value: azureAdTenantId
+            }
+            {
+              name: 'AzureAd__ClientId'
+              value: bffEntraClientId
+            }
+            {
+              name: 'AzureAd__ClientSecret'
+              secretRef: 'bff-entra-client-secret'
+            }
+            {
+              name: 'AzureAd__CallbackPath'
+              value: '/signin-oidc'
+            }
+            {
+              name: 'AzureAd__SignedOutCallbackPath'
+              value: '/signout-callback-oidc'
+            }
+            {
+              name: 'Bff__PublicOrigin'
+              value: publicOrigin
+            }
+            {
+              name: 'DataProtectionKeyStorage__BlobStorageUri'
+              value: bffDataProtectionBlobUri
+            }
+            {
+              name: 'DataProtectionKeyStorage__KeyVaultKeyUri'
+              value: dataProtectionKey.properties.keyUriWithVersion
+            }
+            {
+              name: 'DownstreamApi__BaseUrl'
+              value: internalApiBaseUrl
+            }
+            {
+              name: 'DownstreamApi__Scopes__0'
               value: 'api://${azureAdApiClientId}/access_as_user'
             }
           ]
@@ -753,6 +776,28 @@ resource spa 'Microsoft.App/containerApps@2024-03-01' = {
             cpu: json('0.25')
             memory: '0.5Gi'
           }
+          probes: [
+            {
+              type: 'Startup'
+              httpGet: {
+                path: '/health/live'
+                port: 8081
+                scheme: 'HTTP'
+              }
+              periodSeconds: 5
+              failureThreshold: 24
+            }
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health/live'
+                port: 8081
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+            }
+          ]
         }
       ]
       scale: {
@@ -761,16 +806,23 @@ resource spa 'Microsoft.App/containerApps@2024-03-01' = {
       }
     }
   }
-  dependsOn: [acrPullRole]
+  dependsOn: [
+    bffSecretRole
+    bffDataProtectionBlobRole
+    bffDataProtectionKeyRole
+  ]
 }
 
-resource migrationsJob 'Microsoft.App/jobs@2024-03-01' = {
+resource migrationsJob 'Microsoft.App/jobs@2025-01-01' = {
   name: migrationsJobName
   location: location
   tags: tags
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: managedIdentities
+    userAssignedIdentities: {
+      '${migrationsIdentity.id}': {}
+      '${acrPullIdentity.id}': {}
+    }
   }
   properties: {
     environmentId: containerEnvironment.id
@@ -787,7 +839,7 @@ resource migrationsJob 'Microsoft.App/jobs@2024-03-01' = {
         {
           name: 'sql-admin-password'
           keyVaultUrl: '${keyVaultBaseUrl}/sql-admin-password'
-          identity: workloadIdentity.id
+          identity: migrationsIdentity.id
         }
       ]
     }
@@ -796,7 +848,9 @@ resource migrationsJob 'Microsoft.App/jobs@2024-03-01' = {
         {
           name: 'migrations'
           image: '${acrLoginServer}/assistant-migrations:${backendImageTag}'
-          args: ['migrate']
+          args: [
+            'migrate'
+          ]
           env: [
             {
               name: 'FLYWAY_URL'
@@ -816,7 +870,23 @@ resource migrationsJob 'Microsoft.App/jobs@2024-03-01' = {
             }
             {
               name: 'FLYWAY_BASELINE_ON_MIGRATE'
-              value: 'true'
+              value: 'false'
+            }
+            {
+              name: 'FLYWAY_PLACEHOLDERS_API_IDENTITY_NAME'
+              value: apiIdentity.name
+            }
+            {
+              name: 'FLYWAY_PLACEHOLDERS_API_CLIENT_ID'
+              value: apiIdentity.properties.clientId
+            }
+            {
+              name: 'FLYWAY_PLACEHOLDERS_WORKER_IDENTITY_NAME'
+              value: workerIdentity.name
+            }
+            {
+              name: 'FLYWAY_PLACEHOLDERS_WORKER_CLIENT_ID'
+              value: workerIdentity.properties.clientId
             }
           ]
           resources: {
@@ -827,15 +897,104 @@ resource migrationsJob 'Microsoft.App/jobs@2024-03-01' = {
       ]
     }
   }
-  dependsOn: [acrPullRole, keyVaultSecretsUser]
+  dependsOn: [
+    migrationsSecretRole
+  ]
+}
+
+resource management 'Microsoft.App/containerApps@2025-01-01' = {
+  name: managementAppName
+  location: location
+  tags: tags
+  identity: {
+    type: 'UserAssigned'
+    userAssignedIdentities: {
+      '${acrPullIdentity.id}': {}
+    }
+  }
+  properties: {
+    managedEnvironmentId: containerEnvironment.id
+    configuration: {
+      activeRevisionsMode: 'Single'
+      ingress: {
+        external: true
+        allowInsecure: false
+        targetPort: 8080
+        transport: 'auto'
+      }
+      registries: registryConfiguration
+    }
+    template: {
+      containers: [
+        {
+          name: 'management'
+          image: '${acrLoginServer}/assistant-management:${managementImageTag}'
+          env: [
+            {
+              name: 'MANAGEMENT_API_UPSTREAM'
+              value: internalApiBaseUrl
+            }
+          ]
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          probes: [
+            {
+              type: 'Startup'
+              httpGet: {
+                path: '/health/live'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              periodSeconds: 5
+              failureThreshold: 24
+            }
+            {
+              type: 'Liveness'
+              httpGet: {
+                path: '/health/live'
+                port: 8080
+                scheme: 'HTTP'
+              }
+              initialDelaySeconds: 10
+              periodSeconds: 30
+            }
+          ]
+        }
+      ]
+      scale: {
+        minReplicas: 1
+        maxReplicas: 1
+      }
+    }
+  }
+}
+
+module frontDoor './modules/front-door.bicep' = {
+  name: 'front-door-${environmentName}'
+  params: {
+    location: location
+    environmentName: environmentName
+    nameSuffix: nameSuffix
+    originHostName: spa.properties.configuration.ingress.fqdn
+    managementOriginHostName: management.properties.configuration.ingress.fqdn
+    privateLinkResourceId: containerEnvironment.id
+    customDomainName: publicDomain
+    managementCustomDomainName: managementDomain
+    tags: tags
+  }
 }
 
 output apiName string = api.name
-output apiUrl string = apiBaseUrl
+output apiInternalUrl string = internalApiBaseUrl
 output spaName string = spa.name
-output spaUrl string = spaBaseUrl
+output managementName string = management.name
+output publicUrl string = publicOrigin
 output workerName string = worker.name
 output migrationsJobName string = migrationsJob.name
 output keyVaultName string = keyVault.name
 output sqlServerName string = sql.outputs.serverName
 output sqlDatabaseName string = sql.outputs.databaseName
+output frontDoorProfileName string = frontDoor.outputs.profileName
+output frontDoorEndpointHostName string = frontDoor.outputs.endpointHostName

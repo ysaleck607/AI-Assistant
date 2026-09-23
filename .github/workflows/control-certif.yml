@@ -36,7 +36,7 @@ jobs:
 
     steps:
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -53,21 +53,25 @@ jobs:
           fi
 
           az containerapp update \
-            --name ca-assistant-worker-certif \
+            --name ca-assistant-worker-certif-p \
             --resource-group "$RESOURCE_GROUP" \
             "${EXTRA_ARGUMENTS[@]}" \
             --min-replicas "$MIN_REPLICAS"
 
-      - name: Control public applications
+      - name: Control API and public SPA
         if: ${{ inputs.scope == 'all' }}
         run: |
-          for app in ca-assistant-api-certif ca-assistant-spa-certif; do
+          for app in ca-assistant-api-certif-p ca-assistant-spa-certif-p; do
             if [ "${{ inputs.action }}" = "start" ]; then
               TARGET_PORT=8080
+              INGRESS_TYPE=external
+              if [ "$app" = "ca-assistant-api-certif-p" ]; then
+                INGRESS_TYPE=internal
+              fi
               az containerapp ingress enable \
                 --name "$app" \
                 --resource-group "$RESOURCE_GROUP" \
-                --type external \
+                --type "$INGRESS_TYPE" \
                 --target-port "$TARGET_PORT" \
                 --transport auto
               az containerapp update \
@@ -98,7 +102,7 @@ jobs:
         run: sleep 1800
 
       - name: Sign in to Azure with OIDC
-        uses: azure/login@v2
+        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2.3.1
         with:
           client-id: ${{ vars.AZURE_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
@@ -108,7 +112,7 @@ jobs:
         run: |
           EXPECTED_TOKEN="control-${{ github.run_id }}-${{ github.run_attempt }}"
           CURRENT_TOKEN="$(az containerapp show \
-            --name ca-assistant-worker-certif \
+            --name ca-assistant-worker-certif-p \
             --resource-group "$RESOURCE_GROUP" \
             --query "properties.template.containers[?name == 'worker'] | [0].env[?name == 'WorkerAutoStopToken'].value | [0]" \
             --output tsv)"
@@ -119,6 +123,6 @@ jobs:
           fi
 
           az containerapp update \
-            --name ca-assistant-worker-certif \
+            --name ca-assistant-worker-certif-p \
             --resource-group "$RESOURCE_GROUP" \
             --min-replicas 0

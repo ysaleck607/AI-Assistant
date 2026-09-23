@@ -12,10 +12,6 @@ public sealed class Conversation
 
     public string Title { get; set; } = string.Empty;
 
-    public string? ContextSummary { get; set; }
-
-    public DateTimeOffset? ContextSummaryUpdatedAt { get; set; }
-
     public ConversationStatus Status { get; set; }
 
     public int Version { get; set; }

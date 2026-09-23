@@ -1,5 +1,6 @@
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Services.Backoffice;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.AuthenticateUser;
 using AssistantCore.Service.Application.Services.Conversations;
 using AssistantCore.Service.Application.Services.Conversations.Purge;
@@ -16,9 +17,10 @@ using AssistantCore.Service.Application.Services.Messages.Tabular;
 using AssistantCore.Service.Application.Services.Messages.Tools;
 using AssistantCore.Service.Application.Services.Messages.Validation;
 using AssistantCore.Service.Application.Services.Microsoft365;
+using AssistantCore.Service.Application.Services.Incidents;
 using AssistantCore.Service.Application.Services.Organizations;
+using AssistantCore.Service.Application.Services.RateLimiting;
 using AssistantCore.Service.Application.Services.TenantAdmission;
-using AssistantCore.Service.Application.Services.Usage;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -26,10 +28,6 @@ namespace AssistantCore.Service.Application;
 
 public static class ServiceCollectionExtensions
 {
-    /// <summary>
-    /// Longueur de la colonne Conversation.Title en base : la configuration ne peut pas
-    /// autoriser un titre que la persistence refuserait.
-    /// </summary>
     private const int MaximumPersistedTitleLength = 200;
 
     public static IServiceCollection AddApplication(
@@ -72,8 +70,8 @@ public static class ServiceCollectionExtensions
         services.AddOptions<RetentionOptions>()
             .Bind(configuration.GetSection(RetentionOptions.SectionName))
             .Validate(
-                options => options.ConversationRecoveryDays > 0,
-                $"{RetentionOptions.SectionName}:{nameof(RetentionOptions.ConversationRecoveryDays)} must be greater than zero.")
+                options => options.IsValid(),
+                $"{RetentionOptions.SectionName} requires a positive retention duration for every category.")
             .ValidateOnStart();
         services.AddOptions<OrganizationRoleOptions>()
             .Bind(configuration.GetSection(OrganizationRoleOptions.SectionName))
@@ -82,14 +80,14 @@ public static class ServiceCollectionExtensions
                     && !string.IsNullOrWhiteSpace(options.TenantAdminRole),
                 $"{OrganizationRoleOptions.SectionName}:{nameof(OrganizationRoleOptions.RequiredAdmissionRole)} and {nameof(OrganizationRoleOptions.TenantAdminRole)} are required.")
             .ValidateOnStart();
-        services.AddOptions<UsageOptions>()
-            .Bind(configuration.GetSection(UsageOptions.SectionName))
+        services.AddOptions<RateLimitingOptions>()
+            .Bind(configuration.GetSection(RateLimitingOptions.SectionName))
             .Validate(
-                options => options.DefaultMonthlyTokenLimit > 0,
-                $"{UsageOptions.SectionName}:{nameof(UsageOptions.DefaultMonthlyTokenLimit)} must be greater than zero.")
+                options => options.MemberMessagesPerMinute > 0
+                    && options.OrganizationMessagesPerMinute > 0,
+                $"{RateLimitingOptions.SectionName} message limits must be greater than zero.")
             .ValidateOnStart();
-        services.AddScoped<IUsageTrackingService, UsageTrackingService>();
-        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
+        services.AddScoped<IMessageRateLimitService, MessageRateLimitService>();
         services.AddScoped<ISendMessageCommandValidator, SendMessageCommandValidator>();
         services.AddSingleton<IConversationCursorCodec, ConversationCursorCodec>();
         services.AddSingleton<IConversationMessageCursorCodec, ConversationMessageCursorCodec>();
@@ -106,6 +104,10 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMemberManagementService, MemberManagementService>();
         services.AddScoped<IOrganizationManagementService, OrganizationManagementService>();
         services.AddScoped<IBackofficeOrganizationService, BackofficeOrganizationService>();
+        services.AddScoped<IBackofficeIncidentService, BackofficeIncidentService>();
+        services.AddScoped<IBackofficeMessageQualityService, BackofficeMessageQualityService>();
+        services.AddScoped<IBackofficeUsageService, BackofficeUsageService>();
+        services.AddScoped<IBackofficeAuditService, BackofficeAuditService>();
         services.AddMicrosoft365Application();
         services.AddScoped<IMessageProcessingLifecycleService, MessageProcessingLifecycleService>();
         services.AddScoped<IAgentRuntime, FoundryAgentRuntime>();
@@ -136,6 +138,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365ReindexService, Microsoft365ReindexService>();
         services.AddScoped<IMicrosoft365ReindexStatusService, Microsoft365ReindexStatusService>();
         services.AddScoped<IMicrosoft365CurrentUserOneDriveIndexingService, Microsoft365CurrentUserOneDriveIndexingService>();
+        services.AddScoped<IMicrosoft365CurrentUserOutlookIndexingService, Microsoft365CurrentUserOutlookIndexingService>();
 
         return services;
     }
@@ -145,8 +148,11 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IMicrosoft365IngestionOrchestrator, Microsoft365IngestionOrchestrator>();
         services.AddScoped<IMicrosoft365ListSynchronizationService, Microsoft365ListSynchronizationService>();
         services.AddScoped<IMicrosoft365DriveSynchronizationService, Microsoft365DriveSynchronizationService>();
+        services.AddScoped<IMicrosoft365OutlookSynchronizationService, Microsoft365OutlookSynchronizationService>();
+        services.AddScoped<IMicrosoft365OutlookMessageIndexingService, Microsoft365OutlookMessageIndexingService>();
         services.AddScoped<IMicrosoft365SubscriptionMaintenanceService, Microsoft365SubscriptionMaintenanceService>();
         services.AddScoped<IMicrosoft365ReconciliationService, Microsoft365ReconciliationService>();
+        services.AddScoped<IMicrosoft365IngestionRetentionService, Microsoft365IngestionRetentionService>();
         services.AddScoped<
             IMicrosoft365AclReconciliationService,
             Microsoft365AclReconciliationService>();
@@ -160,6 +166,7 @@ public static class ServiceCollectionExtensions
             Microsoft365ContentExtractionService>();
         services.AddSingleton<IMicrosoft365DocumentChunkingService, Microsoft365DocumentChunkingService>();
         services.AddScoped<IMicrosoft365DocumentProcessingService, Microsoft365DocumentProcessingService>();
+        services.AddScoped<IMicrosoft365ListItemProcessingService, Microsoft365ListItemProcessingService>();
         services.AddScoped<
             IMicrosoft365PendingSynchronizationService,
             Microsoft365PendingSynchronizationService>();
@@ -177,6 +184,10 @@ public static class ServiceCollectionExtensions
             IMicrosoft365PermissionRoleEvaluator,
             Microsoft365PermissionRoleEvaluator>();
         services.AddSingleton<TimeProvider>(TimeProvider.System);
+        services.AddSingleton<ISensitiveDataRedactor, SensitiveDataRedactor>();
+        services.AddScoped<IOperationalIncidentReporter, OperationalIncidentReporter>();
+        services.AddScoped<IConversationPurgeService, ConversationPurgeService>();
+        services.AddScoped<ILlmTokenConsumptionTracker, LlmTokenConsumptionTracker>();
         return services;
     }
 }

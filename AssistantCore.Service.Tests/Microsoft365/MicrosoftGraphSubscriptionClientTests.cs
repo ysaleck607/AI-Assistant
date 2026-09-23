@@ -44,6 +44,7 @@ public sealed class MicrosoftGraphSubscriptionClientTests
             "https://assistant.example/webhooks/microsoft-graph",
             expiresAt,
             clientState,
+            "updated",
             CancellationToken.None);
 
         // Then
@@ -88,6 +89,7 @@ public sealed class MicrosoftGraphSubscriptionClientTests
             "https://assistant.example/webhooks/microsoft-graph",
             expiresAt,
             clientState,
+            "updated",
             CancellationToken.None);
 
         // Then
@@ -122,6 +124,7 @@ public sealed class MicrosoftGraphSubscriptionClientTests
             "https://assistant.example/webhooks/microsoft-graph",
             expiresAt,
             clientState,
+            "updated",
             CancellationToken.None);
 
         // Then

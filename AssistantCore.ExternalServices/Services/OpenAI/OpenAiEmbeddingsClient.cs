@@ -6,7 +6,7 @@ namespace AssistantCore.ExternalServices.Services.OpenAI;
 
 public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
 {
-    public async Task<IReadOnlyList<IReadOnlyList<float>>> CreateAsync(
+    public async Task<OpenAiEmbeddingBatchResult> CreateAsync(
         string endpoint,
         string apiKey,
         string model,
@@ -18,7 +18,7 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
     {
         var usesAzureOpenAi = !string.IsNullOrWhiteSpace(deploymentName);
         var requestUri = usesAzureOpenAi
-            ? $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deploymentName)}/embeddings?api-version={Uri.EscapeDataString(apiVersion)}"
+            ? $"{endpoint.TrimEnd('/')}/openai/deployments/{Uri.EscapeDataString(deploymentName!)}/embeddings?api-version={Uri.EscapeDataString(apiVersion)}"
             : $"{endpoint.TrimEnd('/')}/embeddings";
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
@@ -39,7 +39,17 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
         using var response = await httpClient.SendAsync(request, cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            throw new OpenAiExternalException((int)response.StatusCode);
+            var providerErrorMessage = await response.Content.ReadAsStringAsync(cancellationToken);
+            var retryAfter = response.Headers.RetryAfter;
+            var retryAfterDelay = retryAfter?.Delta
+                ?? (retryAfter?.Date is { } retryAfterAt
+                    ? retryAfterAt - DateTimeOffset.UtcNow
+                    : null);
+            throw new OpenAiExternalException(
+                (int)response.StatusCode,
+                providerErrorMessage,
+                retryAfterDelay is { } delay && delay > TimeSpan.Zero ? delay : null,
+                retryAfter?.Date);
         }
 
         var payload = await response.Content.ReadFromJsonAsync<EmbeddingResponse>(cancellationToken)
@@ -52,13 +62,17 @@ public sealed class OpenAiEmbeddingsClient(HttpClient httpClient)
             throw new OpenAiExternalException(-1);
         }
 
-        return vectors;
+        return new OpenAiEmbeddingBatchResult(vectors, payload.Usage?.TotalTokens ?? 0);
     }
 
     private sealed record EmbeddingResponse(
-        [property: JsonPropertyName("data")] IReadOnlyCollection<EmbeddingItem> Data);
+        [property: JsonPropertyName("data")] IReadOnlyCollection<EmbeddingItem> Data,
+        [property: JsonPropertyName("usage")] EmbeddingUsage? Usage);
 
     private sealed record EmbeddingItem(
         [property: JsonPropertyName("index")] int Index,
         [property: JsonPropertyName("embedding")] IReadOnlyList<float> Embedding);
+
+    private sealed record EmbeddingUsage(
+        [property: JsonPropertyName("total_tokens")] int TotalTokens);
 }

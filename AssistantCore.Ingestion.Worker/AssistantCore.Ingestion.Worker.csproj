@@ -19,4 +19,36 @@
     <ProjectReference Include="..\AssistantCore.Service\AssistantCore.Service.csproj" />
   </ItemGroup>
 
+  <!--
+    Both this project and AssistantCore.Service have their own appsettings*.json with
+    the same file names but different content (Worker vs API config). MSBuild's default
+    project-reference content propagation (GetCopyToOutputDirectoryItems) copies the
+    referenced project's content items into this project's output too, silently
+    overwriting this project's own appsettings*.json on every build - the Worker then
+    fails startup options validation or runs unconfigured. ExcludeAssets on the
+    ProjectReference does not stop this (that only controls NuGet-style restore assets,
+    not this separate copy-to-output target), so this project's own appsettings*.json
+    are explicitly re-copied last to the build and publish destinations, guaranteeing
+    they win regardless of copy order.
+  -->
+  <Target Name="RestoreOwnAppSettingsAfterBuild" AfterTargets="Build">
+    <ItemGroup>
+      <_WorkerOwnAppSettings Include="$(MSBuildProjectDirectory)\appsettings*.json" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_WorkerOwnAppSettings)"
+      DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="false" />
+  </Target>
+
+  <Target Name="RestoreOwnAppSettingsAfterPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WorkerOwnPublishedAppSettings Include="$(MSBuildProjectDirectory)\appsettings*.json" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_WorkerOwnPublishedAppSettings)"
+      DestinationFolder="$(PublishDir)"
+      SkipUnchangedFiles="false" />
+  </Target>
+
 </Project>

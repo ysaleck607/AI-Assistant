@@ -159,7 +159,7 @@ public sealed class Microsoft365ConnectorSecurityTests
         public Task<IReadOnlyCollection<string>> ResolveGroupIdsAsync(
             Guid organizationId,
             string externalTenantId,
-            string userEmail,
+            string entraUserId,
             CancellationToken cancellationToken) =>
             Task.FromResult<IReadOnlyCollection<string>>([]);
     }
@@ -170,7 +170,7 @@ public sealed class Microsoft365ConnectorSecurityTests
         public Task<IReadOnlyCollection<string>> ResolveGroupIdsAsync(
             Guid organizationId,
             string externalTenantId,
-            string userEmail,
+            string entraUserId,
             CancellationToken cancellationToken) =>
             throw new InvalidOperationException("SharePoint group resolution failed.");
     }

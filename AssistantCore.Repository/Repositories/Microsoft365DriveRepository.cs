@@ -24,31 +24,42 @@ public sealed class Microsoft365DriveRepository(AssistantCoreDbContext dbContext
 
     public async Task<IReadOnlyCollection<Microsoft365Drive>> GetIndexedSharePointDrivesAsync(
         Guid organizationId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.Microsoft365Drives
+        CancellationToken cancellationToken = default)
+    {
+        // DisplayName is encrypted at rest with a non-deterministic cipher, so it cannot be
+        // sorted server-side (ORDER BY would sort by ciphertext) - order after materialization.
+        var drives = await dbContext.Microsoft365Drives
             .AsNoTracking()
             .Where(drive =>
                 drive.OrganizationId == organizationId
                 && drive.Kind == Microsoft365SourceKind.SharePointDrive
                 && drive.IsIndexed
                 && drive.Status == Microsoft365SourceStatus.Enabled)
-            .OrderBy(drive => drive.DisplayName)
-            .ThenBy(drive => drive.DriveId)
             .ToArrayAsync(cancellationToken);
 
+        return drives
+            .OrderBy(drive => drive.DisplayName, StringComparer.Ordinal)
+            .ThenBy(drive => drive.DriveId, StringComparer.Ordinal)
+            .ToArray();
+    }
     public async Task<IReadOnlyCollection<Microsoft365Drive>> GetByOwnerAsync(
         Guid organizationId,
         string ownerUserObjectId,
-        CancellationToken cancellationToken = default) =>
-        await dbContext.Microsoft365Drives
+        CancellationToken cancellationToken = default)
+    {
+        var drives = await dbContext.Microsoft365Drives
             .AsNoTracking()
             .Where(drive =>
                 drive.OrganizationId == organizationId
                 && drive.Kind == Microsoft365SourceKind.OneDrive
                 && drive.OwnerUserObjectId == ownerUserObjectId)
-            .OrderBy(drive => drive.DisplayName)
-            .ThenBy(drive => drive.DriveId)
             .ToArrayAsync(cancellationToken);
+
+        return drives
+            .OrderBy(drive => drive.DisplayName, StringComparer.Ordinal)
+            .ThenBy(drive => drive.DriveId, StringComparer.Ordinal)
+            .ToArray();
+    }
 
     public async Task<Microsoft365Drive> SaveOneDriveAsync(
         Microsoft365Connection connection,

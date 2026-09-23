@@ -172,6 +172,27 @@ public sealed class AiToolCallValidatorTests
         Assert.Contains("not allowed", exception.Message, StringComparison.Ordinal);
     }
 
+    [Theory, InlineAutoDomainData("SharePoint")]
+    public async Task Given_ACaseVariantEnumValue_When_ValidateAsync_Then_AcceptsCall(
+        string sourceType,
+        Guid callId)
+    {
+        // Given
+        var arguments = CreateValidMicrosoft365Arguments();
+        arguments["sourceTypes"] = new[] { sourceType };
+        var requestedToolCall = CreateMicrosoft365Call(callId.ToString(), arguments);
+        var validator = CreateValidator();
+
+        // When
+        var result = await validator.ValidateAsync(
+            requestedToolCall,
+            [CreateMicrosoft365Tool()],
+            CancellationToken.None);
+
+        // Then
+        Assert.Equal(callId.ToString(), result.CallId);
+    }
+
     [Theory]
     [InlineAutoDomainData("2026-02-30", "2026-03-01")]
     [InlineAutoDomainData("2026-06-30", "2026-04-01")]

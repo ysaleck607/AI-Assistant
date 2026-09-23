@@ -80,6 +80,37 @@ public sealed class Microsoft365AclReconciliationServiceTests
         Assert.Equal(0, synchronizationService.MarkUnavailableCallCount);
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_AnOutlookContent_When_RunAsync_Then_ReconcilesItsMailboxAcl(
+        Guid organizationId,
+        Guid sourceId,
+        string externalContentId,
+        string mailboxUserId)
+    {
+        // Given
+        var content = CreateOutlookContent(
+            organizationId,
+            sourceId,
+            externalContentId,
+            mailboxUserId);
+        var synchronizationService = new RecordingAclSynchronizationService();
+        var service = CreateService(
+            content,
+            new Microsoft365AclResolution.Unresolved(
+                Microsoft365AclResolutionFailureReason.PartialResponse),
+            synchronizationService);
+
+        // When
+        await service.RunAsync(CancellationToken.None);
+
+        // Then
+        Assert.NotNull(synchronizationService.ReceivedAcl);
+        var acl = synchronizationService.ReceivedAcl!;
+        Assert.Equal([mailboxUserId], acl.AllowedEntraUserIds);
+        Assert.Empty(acl.AllowedEntraGroupIds);
+        Assert.Equal(1, synchronizationService.SynchronizeCallCount);
+    }
+
     private static Microsoft365AclReconciliationService CreateService(
         Microsoft365IndexedContent content,
         Microsoft365AclResolution resolution,
@@ -88,6 +119,7 @@ public sealed class Microsoft365AclReconciliationServiceTests
             new IndexedContentRepositoryFake(content),
             new AclResolverFake(resolution),
             synchronizationService,
+            new SecurityIdentityNormalizerFake(),
             Options.Create(new Microsoft365Options()),
             TimeProvider.System,
             NullLogger<Microsoft365AclReconciliationService>.Instance);
@@ -122,6 +154,34 @@ public sealed class Microsoft365AclReconciliationServiceTests
         };
     }
 
+    private static Microsoft365IndexedContent CreateOutlookContent(
+        Guid organizationId,
+        Guid sourceId,
+        string externalContentId,
+        string mailboxUserId)
+    {
+        var organization = new Organization
+        {
+            Id = organizationId,
+            IdentityProvider = IdentityProvider.MicrosoftEntraId,
+            Status = RecordStatus.Active
+        };
+        return new Microsoft365IndexedContent
+        {
+            Id = Guid.NewGuid(),
+            OrganizationId = organizationId,
+            Microsoft365SourceId = sourceId,
+            ExternalContentId = externalContentId,
+            Organization = organization,
+            Microsoft365Source = new Microsoft365Source
+            {
+                Id = sourceId,
+                Kind = Microsoft365SourceKind.OutlookMailbox,
+                ExternalResourceId = mailboxUserId
+            }
+        };
+    }
+
     private sealed class AclResolverFake(Microsoft365AclResolution resolution)
         : IMicrosoft365AclResolver
     {
@@ -129,6 +189,14 @@ public sealed class Microsoft365AclReconciliationServiceTests
             Organization organization,
             Microsoft365ContentReference contentReference,
             CancellationToken cancellationToken = default) => Task.FromResult(resolution);
+    }
+
+    private sealed class SecurityIdentityNormalizerFake : IMicrosoft365SecurityIdentityNormalizer
+    {
+        public string NormalizeEntraUserId(string objectId) => objectId;
+        public string NormalizeEntraGroupId(string objectId) => objectId;
+        public string NormalizeEntraGroupOwnerId(string objectId) => objectId;
+        public string NormalizeSharePointGroupId(string siteId, string sharePointGroupId) => sharePointGroupId;
     }
 
     private sealed class IndexedContentRepositoryFake(Microsoft365IndexedContent content)

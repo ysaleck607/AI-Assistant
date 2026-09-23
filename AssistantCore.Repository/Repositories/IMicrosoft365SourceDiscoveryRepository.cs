@@ -65,6 +65,21 @@ public interface IMicrosoft365SourceDiscoveryRepository
         CancellationToken cancellationToken = default) =>
         Task.FromException(new NotSupportedException());
 
+    Task<Microsoft365Source> SaveOutlookMailboxAsync(
+        Microsoft365Connection connection,
+        string mailboxUserId,
+        string mailFolderId,
+        string displayName,
+        DateTimeOffset discoveredAt,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException<Microsoft365Source>(new NotSupportedException());
+
+    Task SaveOutlookMailboxActivationAsync(
+        Microsoft365Source mailbox,
+        DateTimeOffset requestedAt,
+        CancellationToken cancellationToken = default) =>
+        Task.FromException(new NotSupportedException());
+
     Task<Microsoft365List?> FindListAsync(
         Guid organizationId,
         string siteId,

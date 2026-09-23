@@ -4,7 +4,10 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
 namespace AssistantCore.Repository.Persistence.Configurations;
 
-public sealed class MessageSourceConfiguration : IEntityTypeConfiguration<MessageSource>
+public sealed class MessageSourceConfiguration(
+    IFieldEncryptor titleEncryptor,
+    IFieldEncryptor referenceEncryptor,
+    IFieldEncryptor urlEncryptor) : IEntityTypeConfiguration<MessageSource>
 {
     public void Configure(EntityTypeBuilder<MessageSource> builder)
     {
@@ -23,15 +26,18 @@ public sealed class MessageSourceConfiguration : IEntityTypeConfiguration<Messag
             .IsRequired();
 
         builder.Property(source => source.Title)
-            .HasMaxLength(500)
+            .HasConversion(new EncryptedStringConverter(titleEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
 
         builder.Property(source => source.Reference)
-            .HasMaxLength(500)
+            .HasConversion(new EncryptedStringConverter(referenceEncryptor))
+            .HasColumnType("nvarchar(max)")
             .IsRequired();
 
         builder.Property(source => source.Url)
-            .HasMaxLength(2048);
+            .HasConversion(new NullableEncryptedStringConverter(urlEncryptor))
+            .HasColumnType("nvarchar(max)");
 
         builder.Property(source => source.SourceDate)
             .HasColumnType("datetimeoffset");

@@ -1,11 +1,17 @@
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Entities;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Repository.Repositories;
+using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Exceptions;
 using AssistantCore.Service.Application.Models.Messages;
 using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.Lifecycle;
+using AssistantCore.Service.Application.Services.Incidents;
+using AssistantCore.Service.Application.Services.LlmQuota;
 using AssistantCore.Service.Application.Services.Messages.Lifecycle;
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 
 namespace AssistantCore.Service.Tests.Messages;
 
@@ -19,7 +25,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         var result = await service.StartAsync(
@@ -59,7 +65,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var result = await service.StartAsync(
             null,
@@ -90,7 +96,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
         var repository = new RecordingConversationRepository { FoundConversation = conversation };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var result = await service.StartAsync(
             conversation.Id,
@@ -110,7 +116,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
         var longMessage = new string('a', 250);
 
         await service.StartAsync(null, longMessage, organization, member, CancellationToken.None);
@@ -131,7 +137,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         conversation.OrganizationId = organization.Id;
         conversation.OwnerMemberId = member.Id;
         var repository = new RecordingConversationRepository { FoundConversation = conversation };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         var result = await service.StartAsync(
@@ -162,7 +168,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         member.OrganizationId = organization.Id;
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.StartAsync(Guid.NewGuid(), "Question", organization, member, CancellationToken.None));
@@ -187,7 +193,7 @@ public sealed class MessageProcessingLifecycleServiceTests
             FoundConversation = conversation,
             ReturnNullWhenAddingMessage = true
         };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.StartAsync(conversation.Id, "Question", organization, member, CancellationToken.None));
@@ -206,7 +212,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         member.OrganizationId = Guid.NewGuid();
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.StartAsync(null, "Question", organization, member, CancellationToken.None));
@@ -235,7 +241,7 @@ public sealed class MessageProcessingLifecycleServiceTests
             ["Quebec inventory was unavailable."],
             new AgentTurnUsage(TimeSpan.FromSeconds(2), 100, 20, 2, 1));
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(completedAt));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(completedAt), NullLogger<MessageProcessingLifecycleService>.Instance);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         var result = await service.CompleteAsync(processing, agentTurnResult, cancellationTokenSource.Token);
@@ -259,13 +265,163 @@ public sealed class MessageProcessingLifecycleServiceTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_ACompletedMessage_When_CompleteAsync_Then_RecordsTokenConsumptionForThePlanningModel(
+        StartedMessageProcessing processing,
+        DateTimeOffset completedAt)
+    {
+        // Given
+        var agentTurnResult = new AgentTurnResult(
+            "Reponse.",
+            "gpt",
+            [],
+            [],
+            new AgentTurnUsage(TimeSpan.FromSeconds(1), 100, 20, 1, 0));
+        var repository = new RecordingConversationRepository();
+        var tracker = new RecordingLlmTokenConsumptionTracker();
+        var service = new MessageProcessingLifecycleService(
+            repository,
+            tracker,
+            new NoOpOperationalIncidentReporter(), CreateSearchOptions(),
+            new StubTimeProvider(completedAt),
+            NullLogger<MessageProcessingLifecycleService>.Instance);
+
+        // When
+        await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
+
+        // Then
+        var recorded = Assert.Single(tracker.RecordedConsumptions);
+        Assert.Equal("gpt-5.5", recorded.Model);
+        Assert.Equal(120, recorded.Tokens);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_TokenTrackingFails_When_CompleteAsync_Then_StillReturnsTheCompletedMessage(
+        StartedMessageProcessing processing,
+        DateTimeOffset completedAt)
+    {
+        // Given : le suivi de quota ne doit jamais faire echouer une reponse deja rendue.
+        var agentTurnResult = new AgentTurnResult(
+            "Reponse.",
+            "gpt",
+            [],
+            [],
+            new AgentTurnUsage(TimeSpan.FromSeconds(1), 100, 20, 1, 0));
+        var repository = new RecordingConversationRepository();
+        var service = new MessageProcessingLifecycleService(
+            repository,
+            new ThrowingLlmTokenConsumptionTracker(),
+            new NoOpOperationalIncidentReporter(), CreateSearchOptions(),
+            new StubTimeProvider(completedAt),
+            NullLogger<MessageProcessingLifecycleService>.Instance);
+
+        // When
+        var result = await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
+
+        // Then
+        Assert.Equal(repository.CompletedAssistantMessage!.Id, result.AssistantMessageId);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ANoEvidenceWarning_When_CompleteAsync_Then_ReportsAContentGapAlertWithTheQuestionAndResponse(
+        StartedMessageProcessing processing,
+        DateTimeOffset completedAt)
+    {
+        // Given
+        var agentTurnResult = new AgentTurnResult(
+            "Je n'ai pas trouve d'information a ce sujet.",
+            "gpt",
+            [],
+            [$"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvée pour répondre à cette question."],
+            new AgentTurnUsage(TimeSpan.FromSeconds(1), 100, 20, 1, 0));
+        var repository = new RecordingConversationRepository();
+        var reporter = new RecordingOperationalIncidentReporter();
+        var service = new MessageProcessingLifecycleService(
+            repository,
+            new NoOpLlmTokenConsumptionTracker(),
+            reporter,
+            CreateSearchOptions(),
+            new StubTimeProvider(completedAt),
+            NullLogger<MessageProcessingLifecycleService>.Instance);
+
+        // When
+        await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
+
+        // Then
+        var reported = Assert.Single(reporter.ReportedIncidents);
+        var alert = Assert.IsType<ContentGapAlertException>(reported.Exception);
+        Assert.Contains(processing.UserMessage, alert.Message, StringComparison.Ordinal);
+        Assert.Contains(agentTurnResult.Content, alert.Message, StringComparison.Ordinal);
+        Assert.Equal(processing.OrganizationId, reported.OrganizationId);
+        Assert.Equal(processing.OwnerMemberId, reported.OrganizationMemberId);
+        Assert.Equal("Conversation", reported.RelatedResourceType);
+        Assert.Equal(processing.ConversationId, reported.RelatedResourceId);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_NoNoEvidenceWarning_When_CompleteAsync_Then_DoesNotReportAContentGapAlert(
+        StartedMessageProcessing processing,
+        DateTimeOffset completedAt)
+    {
+        // Given
+        var agentTurnResult = new AgentTurnResult(
+            "Voici la reponse.",
+            "gpt",
+            [],
+            [],
+            new AgentTurnUsage(TimeSpan.FromSeconds(1), 100, 20, 1, 0));
+        var repository = new RecordingConversationRepository();
+        var reporter = new RecordingOperationalIncidentReporter();
+        var service = new MessageProcessingLifecycleService(
+            repository,
+            new NoOpLlmTokenConsumptionTracker(),
+            reporter,
+            CreateSearchOptions(),
+            new StubTimeProvider(completedAt),
+            NullLogger<MessageProcessingLifecycleService>.Instance);
+
+        // When
+        await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
+
+        // Then
+        Assert.Empty(reporter.ReportedIncidents);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_ContentGapReportingFails_When_CompleteAsync_Then_StillReturnsTheCompletedMessage(
+        StartedMessageProcessing processing,
+        DateTimeOffset completedAt)
+    {
+        // Given : une panne d'alerte ne doit jamais faire echouer une reponse deja rendue.
+        var agentTurnResult = new AgentTurnResult(
+            "Je n'ai pas trouve d'information a ce sujet.",
+            "gpt",
+            [],
+            [$"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvée pour répondre à cette question."],
+            new AgentTurnUsage(TimeSpan.FromSeconds(1), 100, 20, 1, 0));
+        var repository = new RecordingConversationRepository();
+        var service = new MessageProcessingLifecycleService(
+            repository,
+            new NoOpLlmTokenConsumptionTracker(),
+            new ThrowingOperationalIncidentReporter(),
+            CreateSearchOptions(),
+            new StubTimeProvider(completedAt),
+            NullLogger<MessageProcessingLifecycleService>.Instance);
+
+        // When
+        var result = await service.CompleteAsync(processing, agentTurnResult, CancellationToken.None);
+
+        // Then
+        Assert.Equal(repository.CompletedAssistantMessage!.Id, result.AssistantMessageId);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_RepositoryRejectsCompletion_When_CompleteAsync_Then_ThrowsNotFound(
         StartedMessageProcessing processing,
         AgentTurnResult agentTurnResult,
         DateTimeOffset completedAt)
     {
         var repository = new RecordingConversationRepository { ReturnNullWhenCompletingMessage = true };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(completedAt));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(completedAt), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.CompleteAsync(processing, agentTurnResult, CancellationToken.None));
@@ -283,7 +439,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         DateTimeOffset failedAt)
     {
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(failedAt));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(failedAt), NullLogger<MessageProcessingLifecycleService>.Instance);
         using var cancellationTokenSource = new CancellationTokenSource();
 
         await service.FailAsync(
@@ -303,7 +459,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         StartedMessageProcessing processing)
     {
         var repository = new RecordingConversationRepository { ReturnFalseWhenFailingMessage = true };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<NotFoundException>(() =>
             service.FailAsync(
@@ -319,7 +475,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         StartedMessageProcessing processing)
     {
         var repository = new RecordingConversationRepository();
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
             service.FailAsync(
@@ -337,7 +493,7 @@ public sealed class MessageProcessingLifecycleServiceTests
     {
         var persistenceException = new InvalidOperationException("Persistence failed.");
         var repository = new RecordingConversationRepository { FailureException = persistenceException };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(DateTimeOffset.UtcNow));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(DateTimeOffset.UtcNow), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
             service.FailAsync(
@@ -360,7 +516,7 @@ public sealed class MessageProcessingLifecycleServiceTests
         conversation.OwnerMemberId = member.Id;
         conversation.Status = ConversationStatus.Archived;
         var repository = new RecordingConversationRepository { FoundConversation = conversation };
-        var service = new MessageProcessingLifecycleService(repository, new StubTimeProvider(now));
+        var service = new MessageProcessingLifecycleService(repository, new NoOpLlmTokenConsumptionTracker(), new NoOpOperationalIncidentReporter(), CreateSearchOptions(), new StubTimeProvider(now), NullLogger<MessageProcessingLifecycleService>.Instance);
 
         var exception = await Assert.ThrowsAsync<ConflictException>(() =>
             service.StartAsync(
@@ -376,6 +532,85 @@ public sealed class MessageProcessingLifecycleServiceTests
     private sealed class StubTimeProvider(DateTimeOffset utcNow) : TimeProvider
     {
         public override DateTimeOffset GetUtcNow() => utcNow;
+    }
+
+    private static IOptions<AzureAiSearchOptions> CreateSearchOptions() =>
+        Options.Create(new AzureAiSearchOptions { PlanningModelName = "gpt-5.5" });
+
+    private sealed class NoOpLlmTokenConsumptionTracker : ILlmTokenConsumptionTracker
+    {
+        public Task RecordConsumptionAsync(
+            string model,
+            long tokens,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+
+        public Task<long> GetCurrentPeriodConsumptionAsync(
+            string model,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(0L);
+    }
+
+    private sealed class RecordingLlmTokenConsumptionTracker : ILlmTokenConsumptionTracker
+    {
+        public List<(string Model, long Tokens)> RecordedConsumptions { get; } = [];
+
+        public Task RecordConsumptionAsync(
+            string model,
+            long tokens,
+            CancellationToken cancellationToken = default)
+        {
+            RecordedConsumptions.Add((model, tokens));
+            return Task.CompletedTask;
+        }
+
+        public Task<long> GetCurrentPeriodConsumptionAsync(
+            string model,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(0L);
+    }
+
+    private sealed class ThrowingLlmTokenConsumptionTracker : ILlmTokenConsumptionTracker
+    {
+        public Task RecordConsumptionAsync(
+            string model,
+            long tokens,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Simulated tracking failure.");
+
+        public Task<long> GetCurrentPeriodConsumptionAsync(
+            string model,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(0L);
+    }
+
+    private sealed class NoOpOperationalIncidentReporter : IOperationalIncidentReporter
+    {
+        public Task ReportAsync(
+            OperationalIncidentReport report,
+            CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
+
+    private sealed class RecordingOperationalIncidentReporter : IOperationalIncidentReporter
+    {
+        public List<OperationalIncidentReport> ReportedIncidents { get; } = [];
+
+        public Task ReportAsync(
+            OperationalIncidentReport report,
+            CancellationToken cancellationToken = default)
+        {
+            ReportedIncidents.Add(report);
+            return Task.CompletedTask;
+        }
+    }
+
+    private sealed class ThrowingOperationalIncidentReporter : IOperationalIncidentReporter
+    {
+        public Task ReportAsync(
+            OperationalIncidentReport report,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Simulated reporting failure.");
     }
 
     private sealed class RecordingConversationRepository : IConversationRepository

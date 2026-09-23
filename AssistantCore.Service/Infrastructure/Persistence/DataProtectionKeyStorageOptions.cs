@@ -16,7 +16,9 @@ public sealed class DataProtectionKeyStorageOptions
     public string BlobStorageUri { get; init; } = string.Empty;
 
     /// <summary>
-    /// URI complete, version comprise, de la cle Key Vault qui chiffre le trousseau.
+    /// URI de la cle Key Vault qui chiffre le trousseau. Une URI versionnee est acceptee
+    /// en configuration mais normalisee vers l'identifiant de cle sans version afin que
+    /// les nouvelles cles Data Protection utilisent automatiquement la version Key Vault active.
     /// </summary>
     public string KeyVaultKeyUri { get; init; } = string.Empty;
 }

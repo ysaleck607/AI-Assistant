@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
+using AssistantCore.Service.Application.Models.Messages;
 using AssistantCore.Service.Application.Models.Messages.AgentRuntime;
 using AssistantCore.Service.Application.Models.Messages.Connectors;
 using AssistantCore.Service.Application.Models.Messages.Tools;
@@ -20,6 +22,12 @@ public sealed class FoundryAgentRuntime(
     ILogger<FoundryAgentRuntime> logger) : IAgentRuntime
 {
     private const string PreparingResponseProgress = "Préparation de la réponse…";
+    private static readonly string[] ToolProgressMessages =
+    [
+        "Je consulte les sources et contenus pertinents…",
+        "J’analyse les informations disponibles…",
+        "Je recoupe les données autorisées…"
+    ];
     private readonly AgentRuntimeOptions _options = options.Value;
 
     public async Task<AgentTurnResult> RunAsync(
@@ -30,7 +38,7 @@ public sealed class FoundryAgentRuntime(
 
         var stopwatch = Stopwatch.StartNew();
         using var timeoutSource = CreateTurnTimeoutSource(cancellationToken);
-        var context = await CreateExecutionContextAsync(request, timeoutSource.Token);
+        var context = await CreateExecutionContextAsync(request, onToolProgress: null, timeoutSource.Token);
 
         var response = await foundryAgentClient.RunAsync(
             context.ClientRequest,
@@ -52,14 +60,20 @@ public sealed class FoundryAgentRuntime(
         var stopwatch = Stopwatch.StartNew();
         using var timeoutSource = CreateTurnTimeoutSource(cancellationToken);
         await callbacks.OnProgress(PreparingResponseProgress, timeoutSource.Token);
-        var context = await CreateExecutionContextAsync(request, timeoutSource.Token);
+        var context = await CreateExecutionContextAsync(
+            request,
+            callbacks.OnProgress,
+            timeoutSource.Token);
 
+        // Tool/runtime activity from Foundry can expose implementation names such as
+        // EnterpriseSearch, QueryOutlookMailbox or AnalyzeSpreadsheet. The product UI
+        // receives our own generic progress messages instead.
         var response = await foundryAgentClient.RunStreamingAsync(
             context.ClientRequest,
             context.ExecuteToolAsync,
             callbacks.OnAnswerDelta,
-            callbacks.OnActivityDelta,
-            callbacks.OnActivityCompleted,
+            static (_, _) => ValueTask.CompletedTask,
+            static _ => ValueTask.CompletedTask,
             timeoutSource.Token);
 
         stopwatch.Stop();
@@ -68,6 +82,7 @@ public sealed class FoundryAgentRuntime(
 
     private async Task<RuntimeExecutionContext> CreateExecutionContextAsync(
         AgentTurnRequest request,
+        Func<string, CancellationToken, ValueTask>? onToolProgress,
         CancellationToken cancellationToken)
     {
         var contextStartedAt = Stopwatch.GetTimestamp();
@@ -103,6 +118,11 @@ public sealed class FoundryAgentRuntime(
             if (!authorizedToolMappings.TryGetValue(toolCall.Name, out var internalTool))
             {
                 throw new InvalidOperationException($"Foundry requested an unauthorized tool '{toolCall.Name}'.");
+            }
+
+            if (onToolProgress is not null)
+            {
+                await onToolProgress(CreateFriendlyToolProgress(toolCall), token);
             }
 
             var toolStopwatch = Stopwatch.StartNew();
@@ -172,7 +192,8 @@ public sealed class FoundryAgentRuntime(
         request.ExecutionContext with
         {
             RetrievalCandidateLimit = _options.RetrievalCandidateLimit,
-            ConversationHistory = request.Processing.ConversationHistory
+            ConversationHistory = request.Processing.ConversationHistory,
+            CurrentUserMessage = request.Processing.UserMessage
         };
 
     private static IReadOnlyDictionary<string, AiToolDefinition> CreateAuthorizedToolMappings(
@@ -184,6 +205,7 @@ public sealed class FoundryAgentRuntime(
             var foundryName = tool.Name switch
             {
                 AiToolNames.SearchMicrosoft365 => "EnterpriseSearch",
+                AiToolNames.QueryOutlookMailbox => "QueryOutlookMailbox",
                 AiToolNames.AnalyzeMicrosoft365Spreadsheet => "AnalyzeSpreadsheet",
                 _ => null
             };
@@ -200,9 +222,17 @@ public sealed class FoundryAgentRuntime(
     {
         "EnterpriseSearch" =>
             "Search authorized internal enterprise information when the answer depends on organization-specific data. "
+            + "Use it for semantic research and synthesis across indexed content, including multiple emails or documents. "
+            + "Use QueryOutlookMailbox instead to locate, list or read a specific current mailbox message. "
             + "When an exhaustive spreadsheet calculation is requested without an exact Excel file name, use this tool first "
             + "to identify the exact XLSX or XLSM title, then call AnalyzeSpreadsheet. Do not infer exhaustive spreadsheet "
             + "results from search excerpts.",
+        "QueryOutlookMailbox" =>
+            "Locate, list and read messages in the authenticated user's current Outlook mailbox. Use includeBody=true when "
+            + "the answer depends on exact message content, an amount or another detail; use false when only identifying or "
+            + "listing messages. It can list the newest messages without search terms. Never claim that email is unavailable "
+            + "before calling this tool. Use scope received unless the user explicitly asks about sent mail or all mail. "
+            + "Use limit 5 when no count is requested.",
         "AnalyzeSpreadsheet" =>
             "Use deterministic calculations over every row of an authorized Microsoft 365 XLSX or XLSM file. Always use "
             + "this tool for averages, sums, minima, maxima, counts and exhaustive row filtering; do not use semantic search "
@@ -211,14 +241,26 @@ public sealed class FoundryAgentRuntime(
         _ => throw new ArgumentOutOfRangeException(nameof(toolName), toolName, null)
     };
 
+    private static string CreateFriendlyToolProgress(FoundryAgentToolCall toolCall)
+    {
+        var messages = toolCall.Name switch
+        {
+            "EnterpriseSearch" or "QueryOutlookMailbox" or "AnalyzeSpreadsheet" => ToolProgressMessages,
+            _ => [PreparingResponseProgress]
+        };
+
+        var seed = toolCall.Arguments.GetRawText().GetHashCode(StringComparison.Ordinal);
+        var index = (int)((uint)seed % (uint)messages.Length);
+        return messages[index];
+    }
+
     private static bool CanUseMicrosoft365Tools(ConnectorExecutionContext context) =>
         context.OrganizationId != Guid.Empty
         && context.MemberId != Guid.Empty
         && context.IdentityProvider == IdentityProvider.MicrosoftEntraId
         && !string.IsNullOrWhiteSpace(context.ExternalTenantId)
         && context.EntraUserId is not null
-        && context.EntraUserId != Guid.Empty
-        && !string.IsNullOrWhiteSpace(context.UserEmail);
+        && context.EntraUserId != Guid.Empty;
 
     private CancellationTokenSource CreateTurnTimeoutSource(CancellationToken cancellationToken)
     {
@@ -232,25 +274,42 @@ public sealed class FoundryAgentRuntime(
         IReadOnlyCollection<ToolExecutionResult> executedToolResults,
         TimeSpan executionTime)
     {
-        var citations = executedToolResults
+        var allEvidence = executedToolResults
             .SelectMany(result => result.Evidence)
             .Where(evidence => !string.IsNullOrWhiteSpace(evidence.EvidenceId))
             .GroupBy(evidence => evidence.EvidenceId, StringComparer.Ordinal)
             .Select(group => group.First())
-            .Take(_options.FinalEvidenceLimit)
             .ToArray();
+        var citations = EvidenceCitationSelector.Select(
+            response.Content,
+            allEvidence,
+            _options.FinalEvidenceLimit);
         var warnings = executedToolResults
             .SelectMany(result => result.Warnings)
             .Distinct(StringComparer.Ordinal)
             .ToArray();
 
+        // A tool ran but returned nothing to cite: the question could not be answered
+        // from indexed content. This is silent otherwise, so it is surfaced as a
+        // MessageWarning to feed the backoffice content-gap report (#3).
+        if (executedToolResults.Count > 0 && allEvidence.Length == 0)
+        {
+            warnings =
+            [
+                .. warnings,
+                $"{MessageWarningMarkers.NoEvidenceFoundPrefix} Aucune preuve documentaire trouvée pour répondre à cette question."
+            ];
+        }
+
         logger.LogInformation(
-            "Foundry agent turn completed in {ElapsedMilliseconds} ms with {ModelCallCount} model calls, {ToolCallCount} tool calls, {InputTokens} input tokens and {OutputTokens} output tokens.",
+            "Foundry agent turn completed in {ElapsedMilliseconds} ms with {ModelCallCount} model calls, {ToolCallCount} tool calls, {InputTokens} input tokens and {OutputTokens} output tokens. Selected {CitationCount} exact citations from {EvidenceCount} retrieved evidence items.",
             executionTime.TotalMilliseconds,
             response.ModelCallCount,
             executedToolResults.Count,
             response.InputTokens,
-            response.OutputTokens);
+            response.OutputTokens,
+            citations.Count,
+            allEvidence.Length);
 
         return new AgentTurnResult(
             response.Content,

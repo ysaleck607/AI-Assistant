@@ -24,7 +24,7 @@ seront déployées dans CERTIF.
 
 ```text
 Groupe partagé rg-assistant-shared
-└── ACR Basic — images API, worker, migrations et SPA
+└── ACR Basic — images API, BFF, worker, migrations et SPA
 
 Groupe rg-assistant-certif
 ├── Azure SQL AssistantCoreDb
@@ -49,8 +49,10 @@ des dépôts BFF et SPA. Les workflows n’utilisent pas de Client Secret Azure.
 Attribuer à cette identité les droits nécessaires sur `rg-assistant-shared` et
 `rg-assistant-certif` : `Contributor`, `User Access Administrator` pour les
 assignations de rôles Bicep, `AcrPush` sur l’ACR et `Key Vault Secrets User`
-sur le coffre CERTIF. Après le déploiement, les Container Apps utilisent leurs
-propres identités limitées à `AcrPull` et à la lecture Key Vault.
+sur le coffre CERTIF. Ajouter aussi `Key Vault Secrets Officer` limité au secret
+`azure-search-api-key` : le pipeline y synchronise la clé primaire Azure AI
+Search avant chaque déploiement. Après le déploiement, les Container Apps utilisent
+leurs propres identités limitées à `AcrPull` et à la lecture Key Vault.
 
 Dans les paramètres Actions des deux dépôts, créer l’environnement `certif`.
 Il peut exiger un approbateur. Ajouter ces variables dans cet environnement :
@@ -64,6 +66,7 @@ Il peut exiger un approbateur. Ajouter ces variables dans cet environnement :
 | `AZURE_ACR_NAME` | par exemple `acrassistantonp01` |
 | `AZURE_SHARED_RESOURCE_GROUP` | `rg-assistant-shared` |
 | `AZURE_CERTIF_RESOURCE_GROUP` | `rg-assistant-certif` |
+| `AZURE_BFF_ENTRA_CLIENT_ID` | Application ID de l’application Entra confidentielle du BFF |
 
 Dans le dépôt BFF, l’environnement GitHub `publish-images` est dédié à la
 publication automatique des images après un CI réussi sur `master`. Il n'exige
@@ -101,6 +104,8 @@ Déposer ces secrets dans le coffre avant de déployer :
 | `azure-openai-embedding-api-key` | clé Azure OpenAI pour les embeddings |
 | `azure-openai-planning-api-key` | clé Azure OpenAI pour la planification de recherche |
 | `azure-search-api-key` | clé Azure AI Search CERTIF |
+| `member-pii-email-lookup-hmac-key` | clé HMAC aléatoire pour la recherche des courriels chiffrés |
+| `bff-entra-client-secret` | secret de l’application Entra confidentielle du BFF |
 
 Ne copier aucune de ces valeurs dans Git, les paramètres Bicep, les variables
 GitHub ou une image Docker.
@@ -112,11 +117,20 @@ tag SHA complet. Ils ne déploient pas d’application Azure.
 Pour créer ou mettre à jour les applications, lancer **Provision Azure
 infrastructure** avec `deploy-environment` et `certif`. Les tags backend et SPA
 peuvent rester vides : le workflow choisit le dernier tag SHA disponible dans
-ACR (un tag backend seulement si l’API, le Worker et les migrations sont tous
-présents). Il est aussi possible de saisir des tags précis. Le workflow exécute
-un `what-if`, puis met à jour les ressources CERTIF. Le job Flyway est créé,
-mais les migrations sont
-exécutées lors de la promotion d’une version.
+ACR (un tag backend seulement si l’API, le BFF, le Worker et les migrations sont
+tous présents). Il est aussi possible de saisir des tags précis. Le workflow
+exécute un `what-if`, puis met à jour les ressources CERTIF. Le job Flyway est
+créé, mais les migrations restent désactivées par défaut pendant le
+provisionnement. L’option explicite `run_database_migrations` est réservée aux
+opérations préparées qui exigent réellement une migration à cette étape. Le
+parcours normal exécute Flyway lors de la promotion d’une version.
+
+L’environnement Container Apps CERTIF historique utilise le réseau Azure par
+défaut. Son type de réseau ne peut pas être converti en place vers le VNet privé
+déclaré par le template. La première installation de la topologie privée doit
+donc recréer l’environnement et ses applications, ou utiliser des noms
+temporaires pour une bascule parallèle. Ne pas lancer `deploy-environment` sur
+l’environnement historique sans avoir préparé l’une de ces deux stratégies.
 
 L’API et le Worker CERTIF utilisent le modèle de planification RAG `gpt-5.5`
 avec l’effort de récupération `auto`. Dans Azure, le nom de déploiement de ce
@@ -130,11 +144,16 @@ que la configuration locale.
 1. Dans le workflow **Create release candidate** du dépôt BFF, laisser les tags
    backend et SPA vides pour prendre les dernières images publiées, ou indiquer
    les tags SHA `sha-...` voulus.
-2. Vérifier que le manifeste produit référence les quatre images ACR par digest.
+2. Vérifier que le manifeste produit référence les cinq images ACR par digest :
+   API, BFF, Worker, migrations et SPA.
 3. Lancer **Promote release candidate to CERTIF** dans le dépôt BFF et choisir
    l’artifact candidat.
-4. Vérifier Flyway, les endpoints `/health/live` et `/health/ready`, puis le
+4. Vérifier Flyway, `/health/live`, `/health/api-ready`, `/bff/session`, puis le
    chargement de la SPA dans le résumé du workflow.
+5. Conserver l’artifact `certified-rc-*` publié uniquement après ces contrôles.
+   Le futur pipeline PROD doit accepter cet artifact certifié et redéployer les
+   cinq digests qu’il contient, sans reconstruire les images ni résoudre de
+   nouveaux tags ACR.
 
 Pour promouvoir seulement la SPA, le dépôt SPA offre aussi **Promote SPA to
 CERTIF**. Le tag SHA est facultatif : sans tag, le workflow choisit le plus
@@ -145,8 +164,9 @@ GitHub `certif`, puis vérifie la SPA et sa configuration runtime.
 ## Démarrer et arrêter CERTIF
 
 Dans le dépôt BFF, lancer **Start or stop CERTIF** avec `start` et `all` avant
-une séance. Cette action remet l’API et la SPA à une réplique et réactive leurs
-ingress publics; le worker démarre aussi, puis s’arrête automatiquement après
+une séance. Cette action remet l’API et la SPA à une réplique, réactive
+l’ingress interne de l’API et l’ingress externe de la SPA; le worker démarre
+aussi, puis s’arrête automatiquement après
 30 minutes. Pour réduire le calcul du worker seulement, choisir le scope
 `worker`. L’action `stop` avec `all` arrête le worker et les applications
 publiques, puis désactive leurs ingress.

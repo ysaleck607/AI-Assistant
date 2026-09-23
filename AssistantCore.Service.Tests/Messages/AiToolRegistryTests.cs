@@ -118,6 +118,37 @@ public sealed class AiToolRegistryTests
         Assert.True(properties.TryGetProperty("filters", out _));
     }
 
+    [Theory, AutoDomainData]
+    public async Task Given_OutlookIsConfigured_When_GetAvailableToolsAsync_Then_ReturnsMailboxQueryTool(
+        Organization organization)
+    {
+        // Given
+        var connectorQueries = new StubOrganizationConnectorQueries
+        {
+            Connectors = [CreateConnector(ConnectorType.Microsoft365, Microsoft365SourceType.Outlook)]
+        };
+        var registry = new AiToolRegistry(
+            connectorQueries,
+            [new FakeToolExecutionHandler(AiToolNames.QueryOutlookMailbox)]);
+
+        // When
+        var tools = await registry.GetAvailableToolsAsync(organization.Id, CancellationToken.None);
+
+        // Then
+        var tool = Assert.Single(tools);
+        Assert.Equal(AiToolNames.QueryOutlookMailbox, tool.Name);
+        var properties = tool.InputSchema.GetProperty("properties");
+        Assert.True(properties.TryGetProperty("sender", out _));
+        Assert.Equal(
+            "boolean",
+            properties.GetProperty("includeBody").GetProperty("type").GetString());
+        Assert.Equal(
+            ["received", "sent", "all"],
+            properties.GetProperty("scope").GetProperty("enum")
+                .EnumerateArray().Select(value => value.GetString()).ToArray());
+        Assert.Equal(20, properties.GetProperty("limit").GetProperty("maximum").GetInt32());
+    }
+
     private static OrganizationConnector CreateConnector(
         ConnectorType type,
         params Microsoft365SourceType[] sourceTypes) => new()

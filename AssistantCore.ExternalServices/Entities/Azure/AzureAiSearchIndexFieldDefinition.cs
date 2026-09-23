@@ -6,4 +6,5 @@ public sealed record AzureAiSearchIndexFieldDefinition(
     bool Key = false,
     bool Searchable = false,
     bool Filterable = false,
-    bool Retrievable = true);
+    bool Retrievable = true,
+    string? Analyzer = null);

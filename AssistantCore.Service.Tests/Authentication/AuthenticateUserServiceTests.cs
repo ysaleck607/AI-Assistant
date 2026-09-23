@@ -53,6 +53,104 @@ public sealed class AuthenticateUserServiceTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_AnExistingMemberWithAStaleNameAndEmail_When_GetOrganizationAsync_Then_RefreshesThemFromTheDirectory(
+        Organization organization,
+        OrganizationMember member,
+        AuthenticatedIdentity authenticatedIdentity)
+    {
+        // Given
+        member.OrganizationId = organization.Id;
+        member.Status = RecordStatus.Active;
+        member.Name = "Ancien nom";
+        member.Email = "ancien-email@contoso.test";
+        var memberQueries = new StubOrganizationMemberQueries { FoundMember = member };
+        var service = new AuthenticateUserService(
+            new StubCurrentIdentity { Identity = authenticatedIdentity },
+            memberQueries,
+            new StubOrganizationQueries { Result = organization },
+            new StubOrganizationRepository(),
+            new StubOrganizationRoleResolver(),
+            new StubMicrosoft365OnboardingCompletionChecker(),
+            new TenantAdmissionPolicy(),
+            new StubTimeProvider());
+
+        // When
+        var result = await service.GetOrganizationAsync(CancellationToken.None);
+
+        // Then
+        Assert.Equal(authenticatedIdentity.DisplayName, result.Member.Name);
+        Assert.Equal(authenticatedIdentity.Email, result.Member.Email);
+        Assert.Equal(1, memberQueries.RefreshContactDetailsCallCount);
+        Assert.Equal(member.Id, memberQueries.ReceivedContactDetailsMemberId);
+        Assert.Equal(authenticatedIdentity.DisplayName, memberQueries.ReceivedName);
+        Assert.Equal(authenticatedIdentity.Email, memberQueries.ReceivedEmail);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_AMissingDisplayNameClaimOnAnExistingMember_When_GetOrganizationAsync_Then_PreservesTheExistingName(
+        Organization organization,
+        OrganizationMember member,
+        AuthenticatedIdentity authenticatedIdentity)
+    {
+        // Given
+        member.OrganizationId = organization.Id;
+        member.Status = RecordStatus.Active;
+        member.Name = "Nom existant";
+        var identityWithoutDisplayName = authenticatedIdentity with { DisplayName = null };
+        var memberQueries = new StubOrganizationMemberQueries { FoundMember = member };
+        var service = new AuthenticateUserService(
+            new StubCurrentIdentity { Identity = identityWithoutDisplayName },
+            memberQueries,
+            new StubOrganizationQueries { Result = organization },
+            new StubOrganizationRepository(),
+            new StubOrganizationRoleResolver(),
+            new StubMicrosoft365OnboardingCompletionChecker(),
+            new TenantAdmissionPolicy(),
+            new StubTimeProvider());
+
+        // When
+        var result = await service.GetOrganizationAsync(CancellationToken.None);
+
+        // Then
+        Assert.Equal("Nom existant", result.Member.Name);
+        Assert.Equal(1, memberQueries.RefreshContactDetailsCallCount);
+        Assert.Equal("Nom existant", memberQueries.ReceivedName);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_TheSameIdentityAuthenticatingSeveralTimes_When_GetOrganizationAsync_Then_AlwaysReturnsTheSameMemberWithoutDuplication(
+        Organization organization,
+        OrganizationMember member,
+        AuthenticatedIdentity authenticatedIdentity)
+    {
+        // Given
+        member.OrganizationId = organization.Id;
+        member.Status = RecordStatus.Active;
+        var memberQueries = new StubOrganizationMemberQueries { FoundMember = member };
+        var service = new AuthenticateUserService(
+            new StubCurrentIdentity { Identity = authenticatedIdentity },
+            memberQueries,
+            new StubOrganizationQueries { Result = organization },
+            new StubOrganizationRepository(),
+            new StubOrganizationRoleResolver(),
+            new StubMicrosoft365OnboardingCompletionChecker(),
+            new TenantAdmissionPolicy(),
+            new StubTimeProvider());
+
+        // When
+        var first = await service.GetOrganizationAsync(CancellationToken.None);
+        var second = await service.GetOrganizationAsync(CancellationToken.None);
+        var third = await service.GetOrganizationAsync(CancellationToken.None);
+
+        // Then
+        Assert.Equal(member.Id, first.Member.Id);
+        Assert.Equal(member.Id, second.Member.Id);
+        Assert.Equal(member.Id, third.Member.Id);
+        Assert.Null(memberQueries.CreatedMember);
+        Assert.Equal(3, memberQueries.RecordSuccessfulAuthenticationCallCount);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_AnUnknownOrganization_When_GetOrganizationAsync_Then_ThrowsForbiddenException(
         AuthenticatedIdentity authenticatedIdentity)
     {

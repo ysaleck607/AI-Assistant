@@ -109,7 +109,9 @@ deploy/
 └── environments/
     ├── shared.bicepparam
     ├── certif.bootstrap.bicepparam
-    └── certif.bicepparam
+    ├── certif.bicepparam
+    ├── prod.bootstrap.bicepparam
+    └── prod.bicepparam
 
 .github/workflows/
 ├── provision-azure.yml
@@ -119,9 +121,9 @@ deploy/
 └── release-candidate.yml
 ```
 
-`main.bicep` déploie l'environnement CERTIF. Le fichier `.bicepparam` contient
-les paramètres non sensibles de cet environnement. Aucun fichier ou workflow
-PROD n'est créé pendant cette étape.
+`main.bicep` déploie CERTIF ou PROD à partir de la même topologie. Chaque
+fichier `.bicepparam` contient uniquement les paramètres non sensibles de son
+environnement; les valeurs confidentielles restent dans le Key Vault associé.
 
 <a id="production-deployment-environments"></a>
 ### Environnements
@@ -133,6 +135,15 @@ CERTIF possède :
 - une identité managée;
 - ses données;
 - l'API et le worker.
+
+PROD possède son propre groupe de ressources, sa base SQL, son Key Vault, son
+stockage de clés Data Protection, ses applications Entra, ses ressources Azure
+OpenAI/Foundry/Vision et, après la première promotion, ses Container Apps et son
+Front Door. Le service Azure AI Search Basic est partagé pour optimiser le
+coût, mais chaque client possède un index, une source et une base de
+connaissances distincts. Le premier ensemble PROD est
+`ogcomptabilite-index`, `ogcomptabilite-knowledge-source` et
+`ogcomptabilite-knowledge-base`.
 
 La base Azure SQL et ses droits sont dédiés à CERTIF. Elle utilise la limite
 gratuite serverless et se met en pause après une heure d'inactivité.
@@ -148,11 +159,12 @@ Un ACR Basic partagé stocke les images de candidats. Son compte administrateur
 est désactivé. Les Container Apps tirent les images avec une identité managée
 ayant seulement le rôle `AcrPull`.
 
-L'API, le worker, Flyway et la SPA sont publiés avec un tag basé sur
+L'API, le BFF, le worker, Flyway et la SPA sont publiés avec un tag basé sur
 le SHA complet du commit :
 
 ```text
 acrassistant<suffix>.azurecr.io/assistant-api:sha-<40 caractères>
+acrassistant<suffix>.azurecr.io/assistant-bff:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-worker:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-migrations:sha-<40 caractères>
 acrassistant<suffix>.azurecr.io/assistant-spa:sha-<40 caractères>
@@ -166,7 +178,7 @@ sert jamais de référence de déploiement.
 
 Le développement local conserve WireMock et l'authentification JWT locale.
 Après la réussite du CI sur la branche par défaut, les workflows construisent
-les images API, worker, migrations et SPA avec des tags SHA complets et les
+les images API, BFF, worker, migrations et SPA avec des tags SHA complets et les
 publient dans ACR. Ils ne déploient pas d'environnement Azure.
 
 <a id="production-deployment-certification"></a>
@@ -177,16 +189,20 @@ OpenAI et Azure AI Search. Il utilise la base `AssistantCoreDb` de son serveur
 Azure SQL CERTIF et uniquement des données de certification autorisées.
 
 Le déploiement CERTIF est déclenché manuellement avec `workflow_dispatch`.
-L'utilisateur fournit les tags immuables API/worker/migrations et SPA publiés après le CI.
+L'utilisateur fournit le tag backend commun aux images API/BFF/worker/migrations
+et le tag SPA publiés après le CI.
 
 Le workflow CERTIF ne reconstruit aucune image. Il :
 
 1. vérifie que le tag immuable existe;
 2. vérifie que les images existent dans ACR;
-3. exécute Flyway sur `assistantcore-certif`;
-4. déploie les images par digest;
-5. appelle `/health/live` et `/health/ready`;
-6. vérifie que la SPA répond.
+3. vérifie que le callback de consentement Microsoft 365 est enregistré dans Entra;
+4. synchronise la clé primaire Azure AI Search dans Key Vault avant de créer les révisions;
+5. exécute Flyway sur `assistantcore-certif`;
+6. déploie les images par digest;
+7. vérifie que chaque conteneur de la dernière révision est réellement démarré et prêt;
+8. purge Front Door, puis appelle `/health/live`, `/health/api-ready` et `/bff/session`;
+9. vérifie que la SPA répond.
 
 Le déclenchement manuel constitue la décision de promotion. Une protection
 GitHub Environment peut exiger une approbation supplémentaire si l'équipe le
@@ -197,11 +213,36 @@ au démarrage d'une séance. Il arrête automatiquement le worker après
 30 minutes. L'action d'arrêt remet les répliques à zéro et désactive les ingress
 publics de l'API et de la SPA.
 
-Le workflow `release-candidate.yml` produit un manifeste YAML avec les digests
-ACR exacts des images les plus récemment publiées. Les champs de tag peuvent
+Le workflow `release-candidate.yml` produit un manifeste JSON versionné avec les cinq
+digests ACR exacts des images les plus récemment publiées. Les champs de tag peuvent
 rester vides pour utiliser automatiquement les derniers tags SHA backend et SPA,
 ou être renseignés pour choisir une version précise. Le workflow CERTIF déploie
 ce manifeste sans reconstruire les images.
+
+Après la réussite des migrations et des contrôles CERTIF, le workflow publie
+une copie inchangée du manifeste sous le nom `certified-rc-*`. Ce manifeste est
+le contrat de promotion vers PROD : le pipeline PROD doit refuser un simple
+release candidate, télécharger uniquement un artifact `certified-rc-*`, puis
+déployer les mêmes digests API, BFF, Worker, migrations et SPA. Aucun tag ne doit
+être résolu à nouveau et aucune image ne doit être reconstruite entre CERTIF et
+PROD. Le pipeline PROD doit aussi vérifier que l’artifact provient d’une
+exécution réussie du workflow `Promote release candidate to CERTIF`; le nom de
+l’artifact seul ne constitue pas une preuve de certification.
+
+Avant d’activer ce pipeline, créer un environnement GitHub `prod` et une
+identité OIDC dédiée à PROD. Son identifiant fédéré doit
+cibler exactement `environment:prod`; ses rôles Azure doivent être limités au
+groupe de ressources PROD et à la lecture de l’ACR partagé. Ne pas réutiliser
+l’identité de déploiement CERTIF pour PROD. Les redirect URIs, secrets, clés de
+chiffrement, base SQL et identités managées PROD doivent également rester
+séparés de CERTIF.
+
+Pour un dépôt privé dont le forfait GitHub ne permet pas les approbateurs
+d’environnement, limiter `prod` à la branche par défaut exacte et ne stocker
+aucun secret dans GitHub. Ajouter une protection de branche avec revue dès que
+le forfait le permet. Les secrets PROD restent dans Key Vault. Le pipeline PROD
+accepte uniquement un artifact `certified-rc-*`, valide sa provenance et
+déploie ses cinq digests sans reconstruire d’image.
 
 <a id="production-deployment-secrets"></a>
 ### Secrets
@@ -217,6 +258,12 @@ dans Git, les fichiers Bicep, les workflows ou les images.
 
 GitHub Actions se connecte à Azure avec OIDC et des jetons temporaires. Aucun
 Client Secret Azure permanent n'est stocké dans GitHub.
+
+L'identité OIDC de déploiement doit pouvoir écrire uniquement le secret
+`azure-search-api-key` de son Key Vault. Cette permission permet au pipeline de
+remplacer la clé lorsque la clé primaire Azure AI Search change. Sans elle,
+l'API peut démarrer mais la recherche Microsoft 365 échoue avec une réponse
+`403` d'Azure AI Search.
 
 <a id="production-deployment-rollback"></a>
 ### Échecs et retour à la version précédente

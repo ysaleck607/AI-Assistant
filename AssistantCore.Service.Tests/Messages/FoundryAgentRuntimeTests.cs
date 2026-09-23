@@ -1,4 +1,5 @@
 using System.Text.Json;
+using AssistantCore.Repository.Domain;
 using AssistantCore.Repository.Domain.Enums;
 using AssistantCore.Service.Application.Configuration;
 using AssistantCore.Service.Application.Models.Messages;
@@ -88,6 +89,107 @@ public sealed class FoundryAgentRuntimeTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_ToolExecutedWithNoEvidence_When_RunAsync_Then_ReturnsNoEvidenceFoundWarning(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var router = new RecordingToolExecutionRouter(
+            ToolExecutionResult.Succeeded("tool-result", []));
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Je n'ai pas trouvé d'information à ce sujet.", "agent@1", 20, 7, 2),
+            invokeFirstTool: true);
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedEnterpriseSearchTool()]),
+            new RecordingToolCallValidator(),
+            router);
+
+        // When
+        var result = await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        var warning = Assert.Single(result.Warnings);
+        Assert.StartsWith(MessageWarningMarkers.NoEvidenceFoundPrefix, warning, StringComparison.Ordinal);
+        Assert.Empty(result.Citations);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_NoToolWasCalled_When_RunAsync_Then_DoesNotReportANoEvidenceWarning(
+        StartedMessageProcessing processing)
+    {
+        // Given : une réponse conversationnelle sans recherche n'est pas une lacune de contenu.
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Bonjour, comment puis-je vous aider ?", "agent@1", 10, 4, 1));
+        var runtime = CreateRuntime(client, new EmptyToolRegistry());
+
+        // When
+        var result = await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        Assert.Empty(result.Warnings);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_MultipleRetrievedEmails_When_FinalAnswerUsesOneInvoice_Then_ReturnsOnlyThatEmailAsCitation(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var digest = new RetrievedEvidence(
+            "mail-digest",
+            "Microsoft365",
+            "Courriel : Weekly digest: Microsoft service updates",
+            "Résumé hebdomadaire des mises à jour Microsoft.",
+            "outlook:digest",
+            "https://outlook.office365.com/digest",
+            null);
+        var subscription = new RetrievedEvidence(
+            "mail-subscription",
+            "Microsoft365",
+            "Courriel : Votre abonnement payant démarre le lundi 14 septembre 2026",
+            "Votre abonnement Microsoft 365 Business Basic démarre le 14 septembre.",
+            "outlook:subscription",
+            "https://outlook.office365.com/subscription",
+            null);
+        var invoice = new RetrievedEvidence(
+            "mail-invoice",
+            "Microsoft365",
+            "Courriel : Votre G185096135 de facture Microsoft est prête",
+            "Facture G185096135. Montant à payer : 26,22 $ CAD. Date de facturation : 16 septembre 2026.",
+            "outlook:invoice",
+            "https://outlook.office365.com/invoice",
+            null);
+        var router = new RecordingToolExecutionRouter(
+            ToolExecutionResult.Succeeded("tool-result", [digest, subscription, invoice]));
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult(
+                "Tu dois payer 26,22 $ CAD à Microsoft pour la facture G185096135.",
+                "agent@1",
+                20,
+                7,
+                2),
+            invokeFirstTool: true);
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedOutlookMailboxTool()]),
+            new RecordingToolCallValidator(),
+            router);
+
+        // When
+        var result = await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        var citation = Assert.Single(result.Citations);
+        Assert.Equal("mail-invoice", citation.EvidenceId);
+        Assert.Equal("Courriel : Votre G185096135 de facture Microsoft est prête", citation.Title);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_UnauthorizedEnterpriseContext_When_RunAsync_Then_ExposesNoEnterpriseTool(
         StartedMessageProcessing processing)
     {
@@ -142,6 +244,30 @@ public sealed class FoundryAgentRuntimeTests
     }
 
     [Theory, AutoDomainData]
+    public async Task Given_OutlookMailboxTool_When_RunAsync_Then_ExposesItLikeOtherTools(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Réponse.", "agent@1", 8, 2, 1));
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedOutlookMailboxTool()]));
+
+        // When
+        await runtime.RunAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            CancellationToken.None);
+
+        // Then
+        var request = Assert.Single(client.ReceivedRequests);
+        var tool = Assert.Single(request.Tools);
+        Assert.Equal("QueryOutlookMailbox", tool.Name);
+        Assert.Contains("includeBody=true", tool.Description, StringComparison.Ordinal);
+        Assert.Contains("Never claim that email is unavailable", tool.Description, StringComparison.Ordinal);
+    }
+
+    [Theory, AutoDomainData]
     public async Task Given_StreamingFoundryResponse_When_RunStreamingAsync_Then_ForwardsAnswerDeltas(
         StartedMessageProcessing processing)
     {
@@ -176,6 +302,52 @@ public sealed class FoundryAgentRuntimeTests
         Assert.Equal(["Préparation de la réponse…"], progressMessages);
         Assert.Equal(["Allô", " !"], deltas);
         Assert.Equal("Allô !", result.Content);
+    }
+
+    [Theory, AutoDomainData]
+    public async Task Given_OutlookToolExecution_When_RunStreamingAsync_Then_ShowsSourceAgnosticProgressInsteadOfToolName(
+        StartedMessageProcessing processing)
+    {
+        // Given
+        var client = new RecordingFoundryAgentClient(
+            new FoundryAgentClientResult("Réponse.", "agent@1", 9, 2, 1),
+            invokeFirstTool: true,
+            rawActivityDelta: "QueryOutlookMailbox…");
+        var runtime = CreateRuntime(
+            client,
+            new StubToolRegistry([CreateAuthorizedOutlookMailboxTool()]),
+            new RecordingToolCallValidator(),
+            new RecordingToolExecutionRouter(ToolExecutionResult.Succeeded("tool-result", [])));
+        var progressMessages = new List<string>();
+        var activityMessages = new List<string>();
+        var callbacks = new AgentTurnStreamingCallbacks(
+            (message, _) =>
+            {
+                progressMessages.Add(message);
+                return ValueTask.CompletedTask;
+            },
+            (message, _) =>
+            {
+                activityMessages.Add(message);
+                return ValueTask.CompletedTask;
+            },
+            _ => ValueTask.CompletedTask,
+            (_, _) => ValueTask.CompletedTask);
+
+        // When
+        await runtime.RunStreamingAsync(
+            new AgentTurnRequest(processing, CreateValidExecutionContext()),
+            callbacks,
+            CancellationToken.None);
+
+        // Then
+        Assert.Equal(2, progressMessages.Count);
+        Assert.Equal("Préparation de la réponse…", progressMessages[0]);
+        Assert.DoesNotContain("courriel", progressMessages[1], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("outlook", progressMessages[1], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("classeur", progressMessages[1], StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain(progressMessages, message => message.Contains("QueryOutlookMailbox", StringComparison.Ordinal));
+        Assert.Empty(activityMessages);
     }
 
     private static FoundryAgentRuntime CreateRuntime(
@@ -241,10 +413,33 @@ public sealed class FoundryAgentRuntimeTests
                 additionalProperties = false
             }));
 
+    private static AiToolDefinition CreateAuthorizedOutlookMailboxTool() =>
+        new(
+            AiToolNames.QueryOutlookMailbox,
+            "Query Outlook mailbox.",
+            JsonSerializer.SerializeToElement(new
+            {
+                type = "object",
+                properties = new
+                {
+                    query = new { type = new[] { "string", "null" } },
+                    sender = new { type = new[] { "string", "null" } },
+                    recipient = new { type = new[] { "string", "null" } },
+                    scope = new { type = "string" },
+                    dateFrom = new { type = new[] { "string", "null" } },
+                    dateTo = new { type = new[] { "string", "null" } },
+                    includeBody = new { type = "boolean" },
+                    limit = new { type = "integer" }
+                },
+                required = new[] { "query", "sender", "recipient", "scope", "dateFrom", "dateTo", "includeBody", "limit" },
+                additionalProperties = false
+            }));
+
     private sealed class RecordingFoundryAgentClient(
         FoundryAgentClientResult result,
         bool invokeFirstTool = false,
-        IReadOnlyCollection<string>? streamDeltas = null) : IFoundryAgentClient
+        IReadOnlyCollection<string>? streamDeltas = null,
+        string? rawActivityDelta = null) : IFoundryAgentClient
     {
         public List<FoundryAgentClientRequest> ReceivedRequests { get; } = [];
 
@@ -256,17 +451,7 @@ public sealed class FoundryAgentRuntimeTests
             ReceivedRequests.Add(request);
             if (invokeFirstTool && request.Tools.Count > 0)
             {
-                await toolExecutor(
-                    new FoundryAgentToolCall(
-                        request.Tools.First().Name,
-                        JsonSerializer.SerializeToElement(new
-                        {
-                            query = "politique interne",
-                            sourceTypes = (string[]?)null,
-                            dateFrom = (string?)null,
-                            dateTo = (string?)null
-                        })),
-                    cancellationToken);
+                await InvokeFirstToolAsync(request, toolExecutor, cancellationToken);
             }
 
             return result;
@@ -281,6 +466,15 @@ public sealed class FoundryAgentRuntimeTests
             CancellationToken cancellationToken)
         {
             ReceivedRequests.Add(request);
+            if (rawActivityDelta is not null)
+            {
+                await onActivityDelta(rawActivityDelta, cancellationToken);
+                await onActivityCompleted(cancellationToken);
+            }
+            if (invokeFirstTool && request.Tools.Count > 0)
+            {
+                await InvokeFirstToolAsync(request, toolExecutor, cancellationToken);
+            }
             foreach (var delta in streamDeltas ?? [])
             {
                 await onAnswerDelta(delta, cancellationToken);
@@ -288,6 +482,22 @@ public sealed class FoundryAgentRuntimeTests
 
             return result;
         }
+
+        private static Task<string> InvokeFirstToolAsync(
+            FoundryAgentClientRequest request,
+            FoundryAgentToolExecutor toolExecutor,
+            CancellationToken cancellationToken) =>
+            toolExecutor(
+                new FoundryAgentToolCall(
+                    request.Tools.First().Name,
+                    JsonSerializer.SerializeToElement(new
+                    {
+                        query = "information pertinente",
+                        sourceTypes = (string[]?)null,
+                        dateFrom = (string?)null,
+                        dateTo = (string?)null
+                    })),
+                cancellationToken);
     }
 
     private sealed class EmptyToolRegistry : IAiToolRegistry

@@ -4,6 +4,7 @@ using AssistantCore.Service.Application.Commands.CreateOrganization;
 using AssistantCore.Service.Application.Commands.CreateOrganization.Models;
 using AssistantCore.Service.Application.Models.Organizations;
 using AssistantCore.Service.Controllers;
+using AssistantCore.Service.Infrastructure.Authentication.Authorization;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -41,7 +42,7 @@ public sealed class OrganizationsControllerTests
     }
 
     [Theory, AutoDomainData]
-    public void Given_TheCreateOrganizationAction_When_CreateOrganization_Then_DoesNotRequireAuthorizationAndUsesExpectedRoute(
+    public void Given_TheCreateOrganizationAction_When_CreateOrganization_Then_RequiresTheManagementAdminPolicyAndUsesExpectedRoute(
         int _)
     {
         // Given
@@ -50,14 +51,14 @@ public sealed class OrganizationsControllerTests
         // When
         var controllerRoute = controllerType.GetCustomAttribute<RouteAttribute>();
         var authorizeAttribute = controllerType.GetCustomAttribute<AuthorizeAttribute>();
+        var allowAnonymousAttribute = controllerType.GetCustomAttribute<AllowAnonymousAttribute>();
         var method = controllerType.GetMethod(nameof(OrganizationsController.CreateOrganization));
-        var actionAuthorizeAttribute = method?.GetCustomAttribute<AuthorizeAttribute>();
 
         // Then
         Assert.NotNull(method);
         Assert.Equal("api/organizations", controllerRoute?.Template);
-        Assert.Null(authorizeAttribute);
-        Assert.Null(actionAuthorizeAttribute);
+        Assert.Equal(ApiAuthorizationPolicies.ManagementAdmin, authorizeAttribute?.Policy);
+        Assert.Null(allowAnonymousAttribute);
         Assert.NotNull(method.GetCustomAttribute<HttpPostAttribute>());
     }
 }

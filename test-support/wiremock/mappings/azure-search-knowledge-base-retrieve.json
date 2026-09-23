@@ -1,0 +1,39 @@
+{
+  "request": {
+    "method": "POST",
+    "urlPathPattern": "/knowledgebases/synaptix-m365-knowledge-base/retrieve"
+  },
+  "response": {
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/json"
+    },
+    "jsonBody": {
+      "response": [
+        {
+          "content": [
+            {
+              "text": "Ce contenu provient du scénario Microsoft 365 local."
+            }
+          ]
+        }
+      ],
+      "references": [
+        {
+          "id": "local-chunk-1",
+          "sourceData": {
+            "chunkId": "local-chunk-1",
+            "title": "Document WireMock",
+            "content": "Ce contenu provient du scénario Microsoft 365 local.",
+            "siteId": "local-site",
+            "driveId": "local-drive",
+            "driveItemId": "local-item-1",
+            "url": "https://contoso.local/sites/assistant/Documents/document-local.docx",
+            "modifiedAt": "2026-01-01T00:00:00Z"
+          }
+        }
+      ],
+      "activity": []
+    }
+  }
+}

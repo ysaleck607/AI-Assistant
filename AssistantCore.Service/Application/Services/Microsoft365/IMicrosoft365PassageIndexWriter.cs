@@ -12,6 +12,7 @@ public interface IMicrosoft365PassageIndexWriter
         CancellationToken cancellationToken = default);
 
     Task DeleteAsync(
+        Guid organizationId,
         IReadOnlyCollection<string> chunkIds,
         CancellationToken cancellationToken = default) =>
         Task.FromException(new NotSupportedException("Passage deletion is not implemented."));

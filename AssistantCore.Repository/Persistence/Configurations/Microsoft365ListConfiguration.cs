@@ -34,5 +34,11 @@ public sealed class Microsoft365ListConfiguration : IEntityTypeConfiguration<Mic
             list.SiteId,
             list.ListId
         }).IsUnique();
+
+        builder.HasIndex(list => new
+        {
+            list.OrganizationId,
+            list.SiteId
+        }).HasDatabaseName("IX_Microsoft365List_OrganizationId_SiteId");
     }
 }
