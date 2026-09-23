@@ -76,9 +76,7 @@ public sealed class MicrosoftArchiveContentExtractorClientTests
         {
             foreach (var file in files)
             {
-                using var writer = new StreamWriter(
-                    archive.CreateEntry(file.Name).Open(),
-                    new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
+                using var writer = new StreamWriter(archive.CreateEntry(file.Name).Open(), Encoding.UTF8);
                 writer.Write(file.Content);
             }
         }
