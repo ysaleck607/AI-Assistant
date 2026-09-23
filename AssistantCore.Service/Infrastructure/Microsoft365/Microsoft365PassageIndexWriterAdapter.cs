@@ -51,12 +51,21 @@ public sealed class Microsoft365PassageIndexWriterAdapter(
             passage.ContentVector,
             passage.SourceType,
             passage.ArchivePath)).ToArray();
-        return client.MergeOrUploadAsync(
-            configuration.Endpoint,
-            configuration.IndexName,
-            configuration.ApiKey,
-            documents,
-            cancellationToken);
+        try
+        {
+            await client.MergeOrUploadAsync(
+                configuration.Endpoint,
+                configuration.IndexName,
+                configuration.ApiKey,
+                documents,
+                cancellationToken);
+        }
+        catch (AzureAiSearchExternalException exception)
+        {
+            throw new AzureAiSearchUnavailableException(
+                "Azure AI Search passage indexing failed.",
+                exception);
+        }
     }
 
     public async Task DeleteAsync(
