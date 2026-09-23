@@ -106,6 +106,7 @@ public static class ServiceCollectionExtensions
         services.AddScoped<IBackofficeOrganizationService, BackofficeOrganizationService>();
         services.AddScoped<IBackofficeIncidentService, BackofficeIncidentService>();
         services.AddScoped<IBackofficeMessageQualityService, BackofficeMessageQualityService>();
+        services.AddScoped<IBackofficeUsageService, BackofficeUsageService>();
         services.AddScoped<IBackofficeAuditService, BackofficeAuditService>();
         services.AddMicrosoft365Application();
         services.AddScoped<IMessageProcessingLifecycleService, MessageProcessingLifecycleService>();
