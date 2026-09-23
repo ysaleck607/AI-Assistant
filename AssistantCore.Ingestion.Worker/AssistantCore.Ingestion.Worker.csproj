@@ -28,16 +28,26 @@
     fails startup options validation or runs unconfigured. ExcludeAssets on the
     ProjectReference does not stop this (that only controls NuGet-style restore assets,
     not this separate copy-to-output target), so this project's own appsettings*.json
-    are explicitly re-copied last, after Build/Publish, guaranteeing they win regardless
-    of copy order.
+    are explicitly re-copied last to the build and publish destinations, guaranteeing
+    they win regardless of copy order.
   -->
-  <Target Name="RestoreOwnAppSettingsAfterBuild" AfterTargets="Build;Publish">
+  <Target Name="RestoreOwnAppSettingsAfterBuild" AfterTargets="Build">
     <ItemGroup>
       <_WorkerOwnAppSettings Include="$(MSBuildProjectDirectory)\appsettings*.json" />
     </ItemGroup>
     <Copy
       SourceFiles="@(_WorkerOwnAppSettings)"
       DestinationFolder="$(OutDir)"
+      SkipUnchangedFiles="false" />
+  </Target>
+
+  <Target Name="RestoreOwnAppSettingsAfterPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <_WorkerOwnPublishedAppSettings Include="$(MSBuildProjectDirectory)\appsettings*.json" />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(_WorkerOwnPublishedAppSettings)"
+      DestinationFolder="$(PublishDir)"
       SkipUnchangedFiles="false" />
   </Target>
 
