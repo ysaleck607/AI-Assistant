@@ -56,7 +56,7 @@ jobs:
 
       - name: Upload RAG evaluation report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rag-evaluation-foundry-agent
           path: artifacts/rag-evaluation
