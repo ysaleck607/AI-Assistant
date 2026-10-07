@@ -1,4 +1,4 @@
-FROM flyway/flyway:13.7.0
+FROM flyway/flyway:13.9.0
 
 # The upstream image bundles drivers for every supported database. This image
 # only migrates SQL Server, so remove the unused Databricks driver (and its
